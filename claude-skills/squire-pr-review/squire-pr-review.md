@@ -12,14 +12,13 @@
 
 ## 사전 확인
 
-1. `uv`가 설치되어 있는지 확인합니다.
-2. `squire` 커맨드가 전역 사용 가능한지 확인합니다. 없으면 아래로 설치합니다:
-
-```bash
-bash ./skills/squire-pr-review/scripts/install_squire_cli.sh "$(pwd)"
-```
-
-3. `<project-root>/squire-engine/.env`에 `GITHUB_TOKEN`과 `GITHUB_BASE_URL`이 설정되어 있어야 합니다.
+1. `uv`가 설치되어 있는지 확인합니다. 없으면 https://docs.astral.sh/uv/ 안내를 제공합니다.
+2. `squire` 커맨드가 전역 사용 가능한지 확인합니다 (`which squire`).
+   없으면 사용자에게 squire 프로젝트의 `squire-engine` 디렉터리 경로를 물어본 뒤 아래로 설치합니다:
+   ```bash
+   uv tool install --editable <사용자가 알려준 경로> --force && uv tool update-shell
+   ```
+3. `squire-engine/.env`에 `GITHUB_TOKEN`과 `GITHUB_BASE_URL`이 설정되어 있어야 합니다.
 
 ## 워크플로우
 
@@ -67,10 +66,52 @@ squire review publish-local <PR번호> --repo $ARGUMENTS --all
 
 ## 커맨드 레퍼런스
 
-상세 커맨드 목록과 트러블슈팅은 아래 문서를 참조합니다:
+### 저장소 관리
 
-- CLI 커맨드 목록: `./docs/guide/03-cli-commands.md`
-- 스킬 커맨드 레퍼런스: `./skills/squire-pr-review/references/commands.md`
+```bash
+squire repo add owner/repo      # 저장소 등록 + 즉시 1회 동기화
+squire repo list                 # 등록된 저장소 목록 조회
+squire repo remove owner/repo   # 저장소 등록 해제
+```
+
+### 동기화
+
+```bash
+squire sync                            # 모든 등록 저장소 증분 동기화
+squire sync --repo owner/repo         # 특정 저장소 증분 동기화
+squire sync --repo owner/repo --full  # 전체 동기화 (워터마크 무시)
+```
+
+### PR 조회
+
+```bash
+squire list --repo owner/repo --state open|closed|all
+squire show 123 --repo owner/repo
+squire files 123 --repo owner/repo
+squire diff 123 --repo owner/repo [--file path/to/file]
+squire comments 123 --repo owner/repo
+squire reviews 123 --repo owner/repo
+```
+
+### 리뷰 코멘트 관리
+
+```bash
+# 직접 게시
+squire review publish 123 --repo owner/repo --body "의견" [--prefix "[AI Review]"]
+
+# 로컬 저장
+squire review add 123 --repo owner/repo --body "의견" [--severity info|warning|error] [--file path] [--line N]
+
+# 로컬 리뷰 조회
+squire review list 123 --repo owner/repo
+
+# 로컬 리뷰 게시
+squire review publish-local 123 --repo owner/repo --all
+squire review publish-local 123 --repo owner/repo --id 10 --id 11
+
+# 리뷰 상태 변경
+squire review status 123 --repo owner/repo --set pending|in-progress|done
+```
 
 ## 일반적인 오류 대응
 

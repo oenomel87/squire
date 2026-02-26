@@ -6,7 +6,7 @@
 - 엔진(백엔드+CLI): `squire-engine`
 - 웹 클라이언트: `squire-client`
 - 문서: `docs`
-- Codex 스킬: `skills/squire-pr-review`
+- AI 에이전트 스킬: `claude-skills/squire-pr-review`
 
 ## 2) 필수 도구
 

@@ -3,7 +3,7 @@
 ## 1) 스킬 개요
 
 - 스킬 이름: `squire-pr-review`
-- 위치: `<project-root>/skills/squire-pr-review`
+- 위치: `<project-root>/claude-skills/squire-pr-review`
 - 목적:
   - `squire` CLI 설치/등록
   - 저장소 등록 및 동기화
@@ -29,7 +29,7 @@
 `$skill-installer`를 사용해 저장소 경로 기반으로 설치합니다.
 
 ```bash
-scripts/install-skill-from-github.py --repo <owner>/<repo> --path skills/squire-pr-review
+scripts/install-skill-from-github.py --repo <owner>/<repo> --path claude-skills/squire-pr-review
 ```
 
 설치 후 Codex를 재시작하면 스킬 목록에 반영됩니다.
@@ -42,20 +42,20 @@ $squire-pr-review를 사용해 owner/repo를 등록하고 최신 PR을 동기화
 
 ### Claude Code
 
-별도 설치가 필요 없습니다. 이 저장소에 `.claude/commands/squire-pr-review.md`가 포함되어 있어, 해당 프로젝트 디렉터리에서 Claude Code를 실행하면 자동으로 슬래시 커맨드로 등록됩니다.
+`claude-skills/squire-pr-review/squire-pr-review.md` 파일을 사용하려는 프로젝트의 `.claude/commands/`에 복사합니다.
+
+```bash
+mkdir -p /path/to/project/.claude/commands
+cp <project-root>/claude-skills/squire-pr-review/squire-pr-review.md \
+   /path/to/project/.claude/commands/
+```
+
+이후 해당 프로젝트에서 Claude Code를 실행하면 슬래시 커맨드로 사용할 수 있습니다.
 
 호출:
 
 ```text
 /squire-pr-review owner/repo
-```
-
-다른 프로젝트에서도 이 스킬을 사용하려면, `.claude/commands/squire-pr-review.md` 파일을 해당 프로젝트의 `.claude/commands/` 디렉터리에 복사합니다.
-
-```bash
-mkdir -p /path/to/other-project/.claude/commands
-cp <project-root>/.claude/commands/squire-pr-review.md \
-   /path/to/other-project/.claude/commands/
 ```
 
 ## 4) 스킬이 수행하는 기본 흐름
