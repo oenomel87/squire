@@ -1,0 +1,4 @@
+interface:
+  display_name: "Squire PR Review CLI"
+  short_description: "Install and run squire for safe PR review comments."
+  default_prompt: "Use $squire-pr-review to install squire, sync pull requests, and publish comment-only review feedback."

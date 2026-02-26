@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #f1ebde;
+  --panel: #fff8ed;
+  --ink: #1f211a;
+  --ink-soft: #565a4f;
+  --line: #d8ccb7;
+  --button: #f8f0e2;
+  --accent-strong: #0b7178;
+  --shadow: 0 12px 28px rgba(54, 46, 30, 0.12);
+
+  font-family:
+    'Space Grotesk',
+    'Chakra Petch',
+    'Trebuchet MS',
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(17, 128, 134, 0.2), transparent 46%),
+    radial-gradient(circle at 100% 100%, rgba(222, 149, 67, 0.19), transparent 44%),
+    var(--bg);
+}
+
+#root {
+  min-height: 100vh;
+}

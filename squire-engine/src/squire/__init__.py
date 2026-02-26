@@ -1,0 +1,2 @@
+"""Squire engine package."""
+
