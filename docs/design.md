@@ -194,8 +194,8 @@ AI 리뷰를 로컬에만 저장하므로, **읽기 전용 토큰**으로 동작
 
 - Fine-grained PAT 권한: `Pull Requests: Read`, `Contents: Read`
 - 환경 변수 `GITHUB_TOKEN` 사용
-- GitHub API URL은 **항상** 환경 변수 `GITHUB_BASE_URL`을 사용
-- GitHub.com 사용 시에도 `.env`에서 `GITHUB_BASE_URL=https://api.github.com`으로 명시
+- GitHub API URL은 환경 변수 `GITHUB_BASE_URL`을 우선 사용
+- `GITHUB_BASE_URL` 미설정 시 기본값 `https://api.github.com` 사용
 
 ### 추후 확장: GitHub 코멘트 게시
 

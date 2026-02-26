@@ -34,7 +34,7 @@
 
 1. `uv` venv 전용 실행 규칙 고정
 2. 디렉터리 구조 표준화 (`app/`, `api/`, `db/`, `services/`, `cli/`)
-3. 공통 설정 로더(`.env` + `config.yaml`) 구현 (`GITHUB_BASE_URL` 필수 사용)
+3. 공통 설정 로더(`.env` + `config.yaml`) 구현 (`GITHUB_BASE_URL` 미설정 시 기본값 `https://api.github.com`)
 
 ### 산출물
 

@@ -7,7 +7,8 @@
 - Use `uv` venv only.
 - Required env vars in `.env`:
   - `GITHUB_TOKEN`
-  - `GITHUB_BASE_URL` (always required, e.g. `https://api.github.com`)
+  - `GITHUB_BASE_URL` (optional; defaults to `https://api.github.com`)
+    - Set this when using GitHub Enterprise Server (e.g. `https://github.mycompany.com/api/v3`)
 
 ## Commands
 

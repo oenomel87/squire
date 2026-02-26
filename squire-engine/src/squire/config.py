@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_GITHUB_BASE_URL = "https://api.github.com"
 
 
 def load_environment() -> None:
@@ -21,7 +22,7 @@ def load_environment() -> None:
 @dataclass(frozen=True)
 class Settings:
     github_token: str | None
-    github_base_url: str | None
+    github_base_url: str
     db_path: Path
 
 
@@ -33,10 +34,10 @@ def get_settings() -> Settings:
 
     token = os.getenv("GITHUB_TOKEN")
     base_url = os.getenv("GITHUB_BASE_URL")
+    normalized_base_url = (base_url or "").strip() or DEFAULT_GITHUB_BASE_URL
 
     return Settings(
         github_token=token.strip() if token else None,
-        github_base_url=base_url.rstrip("/") if base_url else None,
+        github_base_url=normalized_base_url.rstrip("/"),
         db_path=db_path,
     )
-

@@ -18,8 +18,9 @@
 `<project-root>/squire-engine/.env`에 아래 값을 설정합니다.
 
 - `GITHUB_TOKEN`
-- `GITHUB_BASE_URL`
-  - `.env.sample` 형식 그대로 설정: `https://github.hostname.url/api/v3`
+- `GITHUB_BASE_URL` (GitHub Enterprise Server 사용 시만 설정)
+  - 예시: `https://github.mycompany.com/api/v3`
+  - github.com 사용 시 비워 두거나 항목을 삭제합니다.
 
 ### 1-1) `GITHUB_TOKEN` 권한 가이드
 
@@ -58,6 +59,12 @@ npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
 UI: [http://127.0.0.1:5173](http://127.0.0.1:5173)
+
+클라이언트는 기본적으로 `http://127.0.0.1:8484`의 엔진 API에 연결합니다. 엔진 포트를 변경한 경우 `VITE_SQUIRE_API_BASE_URL` 환경변수를 설정하세요.
+
+```bash
+VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 npm run dev -- --host 127.0.0.1 --port 5173
+```
 
 ## 전역 커맨드 등록 (다른 프로젝트에서도 사용)
 

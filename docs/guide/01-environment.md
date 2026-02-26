@@ -27,8 +27,12 @@ cp .env.sample .env
 필수 값:
 
 - `GITHUB_TOKEN`
+
+선택 값:
+
 - `GITHUB_BASE_URL`
-  - `.env.sample` 형식 그대로 사용: `https://github.hostname.url/api/v3`
+  - 미설정 시 기본값 `https://api.github.com` 사용
+  - GitHub Enterprise Server 사용 시 `.env.sample` 형식대로 설정: `https://github.hostname.url/api/v3`
 
 `GITHUB_TOKEN` 권한 가이드:
 
@@ -58,6 +62,6 @@ npm -v
 
 ## 5) 빠른 준비 체크리스트
 
-- `.env` 파일 생성 및 필수 변수 입력 완료
+- `.env` 파일 생성 및 필수 변수(`GITHUB_TOKEN`) 입력 완료
 - `uv sync`로 엔진 의존성 설치 가능
 - `npm install`로 클라이언트 의존성 설치 가능
