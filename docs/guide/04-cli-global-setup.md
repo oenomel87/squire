@@ -68,7 +68,10 @@ cd <project-root>
 ### 실행은 되지만 GitHub 호출 실패
 
 - `squire-engine/.env`의 `GITHUB_TOKEN`, `GITHUB_BASE_URL` 확인
-- 토큰 권한(코멘트 작성 가능 여부) 확인
+- 토큰 권한 확인
+  - 읽기 전용: `Pull Requests: Read`, `Contents: Read`
+  - 코멘트 게시 시: `Pull Requests: Write` 추가
+  - `PAT classic`의 `repo` 전체 권한은 필수 아님
 
 ### 로컬 DB를 별도 위치로 사용하고 싶은 경우
 

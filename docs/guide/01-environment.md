@@ -30,6 +30,16 @@ cp .env.sample .env
 - `GITHUB_BASE_URL`
   - `.env.sample` 형식 그대로 사용: `https://github.hostname.url/api/v3`
 
+`GITHUB_TOKEN` 권한 가이드:
+
+- 권장: **Fine-grained PAT**
+- 읽기 전용 기능(등록/동기화/조회) 기준 최소 권한:
+  - `Pull Requests: Read`
+  - `Contents: Read`
+- 코멘트 게시(`squire review publish`, `squire review publish-local`)를 사용할 경우:
+  - `Pull Requests: Write` 추가 필요
+- `PAT classic`의 `repo` 전체 권한은 필수 아님
+
 참고:
 
 - 구현은 `GITHUB_BASE_URL`만 사용합니다.

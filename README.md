@@ -21,6 +21,17 @@
 - `GITHUB_BASE_URL`
   - `.env.sample` 형식 그대로 설정: `https://github.hostname.url/api/v3`
 
+### 1-1) `GITHUB_TOKEN` 권한 가이드
+
+- 권장: **Fine-grained PAT** 사용
+- 읽기 전용 기능(저장소 등록/동기화/조회) 기준 최소 권한:
+  - `Pull Requests: Read`
+  - `Contents: Read`
+- 코멘트 게시 기능(`squire review publish`, `squire review publish-local`) 사용 시:
+  - `Pull Requests: Write` 추가 필요
+- `PAT classic`의 `repo` 전체 권한은 **필수 아님**
+- 토큰은 `.env`에만 저장하고 저장소에 커밋하지 않습니다.
+
 ### 2) 런타임
 
 - Engine: `uv` 사용 (`python/pip` 직접 사용하지 않음)
@@ -114,4 +125,4 @@ uv run squire review publish 123 --repo owner/repo --body "의견 내용"
 uv run squire review publish-local 123 --repo owner/repo --all
 ```
 
-참고: 실제 PR 코멘트 추가에는 `GITHUB_TOKEN`에 PR 쓰기 권한이 필요합니다.
+참고: 실제 PR 코멘트 추가에는 `GITHUB_TOKEN`에 `Pull Requests: Write` 권한이 필요합니다.
