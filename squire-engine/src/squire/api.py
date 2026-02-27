@@ -14,6 +14,14 @@ from pydantic import BaseModel, Field
 from . import db
 from .config import get_settings
 from .github import GitHubClient, GitHubError
+from .keychain import (
+    KeychainCommandError,
+    KeychainUnavailableError,
+    delete_github_token,
+    get_github_token,
+    has_github_token,
+    set_github_token,
+)
 from .sync import sync_repository, validate_repo_full_name
 
 app = FastAPI(title="Squire API", version="0.1.0")
@@ -53,6 +61,21 @@ class RepoAddRequest(BaseModel):
         False,
         description="Force full sync instead of incremental sync after registration",
     )
+    github_token: str | None = Field(
+        default=None,
+        description=(
+            "Optional repository-specific GitHub token. "
+            "If omitted, the global `GITHUB_TOKEN` is used. "
+            "When provided, token is stored in macOS Keychain."
+        ),
+    )
+    github_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional repository-specific GitHub API base URL. "
+            "If omitted, the global `GITHUB_BASE_URL` (or default) is used."
+        ),
+    )
 
 
 class RepoResponse(BaseModel):
@@ -62,6 +85,8 @@ class RepoResponse(BaseModel):
     created_at: str
     updated_at: str
     last_synced_at: str | None
+    has_custom_github_token: bool
+    github_base_url: str | None
 
 
 class RepoAddResponse(BaseModel):
@@ -142,13 +167,37 @@ def open_connection():
         conn.close()
 
 
-@contextmanager
-def open_github_client():
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _resolve_repo_github_config(
+    conn: sqlite3.Connection, repo: str
+) -> tuple[str | None, str]:
+    repository = _require_repository(conn, repo)
     settings = get_settings()
+
+    repo_token = get_github_token(repo)
+    if repo_token is None:
+        repo_token = db.get_repository_legacy_github_token(conn, repo)
+
+    repo_base_url = _normalize_optional_text(repository["github_base_url"])
+
+    token = repo_token or settings.github_token
+    base_url = (repo_base_url or settings.github_base_url).rstrip("/")
+    return token, base_url
+
+
+@contextmanager
+def open_github_client_for_repo(conn: sqlite3.Connection, repo: str):
+    token, base_url = _resolve_repo_github_config(conn, repo)
     try:
         client = GitHubClient(
-            token=settings.github_token,
-            base_url=settings.github_base_url,
+            token=token,
+            base_url=base_url,
         )
     except GitHubError as exc:
         raise HTTPException(
@@ -162,14 +211,24 @@ def open_github_client():
         client.close()
 
 
-def _to_repo_response(row: sqlite3.Row) -> RepoResponse:
+def _to_repo_response(conn: sqlite3.Connection, row: sqlite3.Row) -> RepoResponse:
+    full_name = str(row["full_name"])
+    try:
+        has_keychain_token = has_github_token(full_name)
+    except KeychainCommandError:
+        has_keychain_token = False
+    has_custom_token = has_keychain_token or bool(
+        db.get_repository_legacy_github_token(conn, full_name)
+    )
     return RepoResponse(
         id=int(row["id"]),
-        full_name=str(row["full_name"]),
+        full_name=full_name,
         is_active=int(row["is_active"]) == 1,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         last_synced_at=row["last_synced_at"],
+        has_custom_github_token=has_custom_token,
+        github_base_url=_normalize_optional_text(row["github_base_url"]),
     )
 
 
@@ -258,7 +317,7 @@ def _sync_single_repository(
     conn: sqlite3.Connection, repo: str, *, full_sync: bool
 ) -> SyncResult:
     try:
-        with open_github_client() as github:
+        with open_github_client_for_repo(conn, repo) as github:
             synced = sync_repository(conn, github, repo, full_sync=full_sync)
         conn.commit()
     except HTTPException:
@@ -280,6 +339,42 @@ def _sync_single_repository(
     return SyncResult(repo=repo, synced_pull_requests=synced)
 
 
+def _apply_repo_github_overrides(
+    conn: sqlite3.Connection,
+    repo: str,
+    request: RepoAddRequest,
+) -> None:
+    update_token = "github_token" in request.model_fields_set
+    update_base_url = "github_base_url" in request.model_fields_set
+    if update_token:
+        token = _normalize_optional_text(request.github_token)
+        try:
+            if token:
+                set_github_token(repo, token)
+            else:
+                delete_github_token(repo)
+        except KeychainUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Repository token override requires macOS Keychain: {exc}",
+            ) from exc
+        except KeychainCommandError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update macOS Keychain token for `{repo}`: {exc}",
+            ) from exc
+
+        db.clear_repository_legacy_github_token(conn, repo)
+
+    if update_base_url:
+        db.update_repository_github_config(
+            conn,
+            repo,
+            github_base_url=request.github_base_url,
+            update_base_url=True,
+        )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -289,7 +384,7 @@ def health() -> dict[str, str]:
 def list_repos() -> list[RepoResponse]:
     with open_connection() as conn:
         rows = db.list_repositories(conn)
-    return [_to_repo_response(row) for row in rows]
+        return [_to_repo_response(conn, row) for row in rows]
 
 
 @app.post("/repos", response_model=RepoAddResponse)
@@ -300,9 +395,13 @@ def add_repo(request: RepoAddRequest) -> RepoAddResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Repository must be in `owner/repo` format.",
         )
+    created_with_new_token = "github_token" in request.model_fields_set and bool(
+        _normalize_optional_text(request.github_token)
+    )
 
     with open_connection() as conn:
         _, created = db.upsert_repository(conn, repo)
+        _apply_repo_github_overrides(conn, repo, request)
         conn.commit()
 
         try:
@@ -311,6 +410,11 @@ def add_repo(request: RepoAddRequest) -> RepoAddResponse:
             if created:
                 db.remove_repository(conn, repo)
                 conn.commit()
+                if created_with_new_token:
+                    try:
+                        delete_github_token(repo)
+                    except KeychainCommandError:
+                        pass
             raise
 
     return RepoAddResponse(
@@ -332,6 +436,13 @@ def remove_repo(repo_full_name: str) -> dict[str, Any]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Repository `{repo}` is not registered.",
         )
+    try:
+        delete_github_token(repo)
+    except KeychainCommandError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Repository row removed, but failed to delete Keychain token: {exc}",
+        ) from exc
     return {"removed": True, "repo": repo}
 
 
@@ -385,15 +496,14 @@ def get_pull_files(
 ) -> list[dict[str, Any]]:
     with open_connection() as conn:
         _require_repository(conn, repo)
-
-    with open_github_client() as github:
-        try:
-            files = github.list_pull_files(repo, number)
-        except GitHubError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=str(exc),
-            ) from exc
+        with open_github_client_for_repo(conn, repo) as github:
+            try:
+                files = github.list_pull_files(repo, number)
+            except GitHubError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
 
     normalized: list[dict[str, Any]] = []
     for item in files:
@@ -417,30 +527,29 @@ def get_pull_diff(
 ) -> str:
     with open_connection() as conn:
         _require_repository(conn, repo)
+        with open_github_client_for_repo(conn, repo) as github:
+            try:
+                if file:
+                    files = github.list_pull_files(repo, number)
+                    for item in files:
+                        if item.get("filename") == file:
+                            patch = item.get("patch")
+                            if patch:
+                                return str(patch)
+                            return f"No text diff available for `{file}`."
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"`{file}` is not part of PR #{number}.",
+                    )
 
-    with open_github_client() as github:
-        try:
-            if file:
-                files = github.list_pull_files(repo, number)
-                for item in files:
-                    if item.get("filename") == file:
-                        patch = item.get("patch")
-                        if patch:
-                            return str(patch)
-                        return f"No text diff available for `{file}`."
+                return github.get_pull_diff(repo, number)
+            except HTTPException:
+                raise
+            except GitHubError as exc:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"`{file}` is not part of PR #{number}.",
-                )
-
-            return github.get_pull_diff(repo, number)
-        except HTTPException:
-            raise
-        except GitHubError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=str(exc),
-            ) from exc
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
 
 
 @app.get("/pulls/{number}/comments")
@@ -450,15 +559,14 @@ def get_pull_comments(
 ) -> list[dict[str, Any]]:
     with open_connection() as conn:
         _require_repository(conn, repo)
-
-    with open_github_client() as github:
-        try:
-            return github.list_issue_comments(repo, number)
-        except GitHubError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=str(exc),
-            ) from exc
+        with open_github_client_for_repo(conn, repo) as github:
+            try:
+                return github.list_issue_comments(repo, number)
+            except GitHubError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
 
 
 @app.get("/pulls/{number}/github-reviews")
@@ -468,15 +576,14 @@ def get_pull_github_reviews(
 ) -> list[dict[str, Any]]:
     with open_connection() as conn:
         _require_repository(conn, repo)
-
-    with open_github_client() as github:
-        try:
-            return github.list_pull_reviews(repo, number)
-        except GitHubError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=str(exc),
-            ) from exc
+        with open_github_client_for_repo(conn, repo) as github:
+            try:
+                return github.list_pull_reviews(repo, number)
+            except GitHubError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
 
 
 @app.post("/pulls/{number}/local-reviews", response_model=LocalReviewResponse)

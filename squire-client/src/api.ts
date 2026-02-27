@@ -5,6 +5,8 @@ export type Repo = {
   created_at: string
   updated_at: string
   last_synced_at: string | null
+  has_custom_github_token: boolean
+  github_base_url: string | null
 }
 
 export type PullSummary = {
@@ -128,12 +130,21 @@ export async function listRepos(): Promise<Repo[]> {
   return request<Repo[]>('/repos')
 }
 
-export async function addRepo(fullName: string, fullSync: boolean): Promise<void> {
+export async function addRepo(
+  fullName: string,
+  fullSync: boolean,
+  options?: {
+    githubToken?: string
+    githubBaseUrl?: string
+  },
+): Promise<void> {
   await request('/repos', {
     method: 'POST',
     body: {
       full_name: fullName,
       full_sync: fullSync,
+      github_token: options?.githubToken,
+      github_base_url: options?.githubBaseUrl,
     },
   })
 }

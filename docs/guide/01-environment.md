@@ -6,7 +6,9 @@
 - 엔진(백엔드+CLI): `squire-engine`
 - 웹 클라이언트: `squire-client`
 - 문서: `docs`
-- AI 에이전트 스킬: `claude-skills/squire-pr-review`
+- AI 에이전트 스킬:
+  - Codex: `skills/codex/squire-pr-review`
+  - Claude Code: `skills/claude-code/squire-pr-review`
 
 ## 2) 필수 도구
 
@@ -26,7 +28,7 @@ cp .env.sample .env
 
 필수 값:
 
-- `GITHUB_TOKEN`
+- `GITHUB_TOKEN` (모든 저장소를 Keychain 토큰으로만 운영하지 않는 경우)
 
 선택 값:
 
@@ -47,8 +49,24 @@ cp .env.sample .env
 참고:
 
 - 구현은 `GITHUB_BASE_URL`만 사용합니다.
+- `GITHUB_TOKEN`/`GITHUB_BASE_URL`는 전역 기본값이며, 저장소 등록 시 프로젝트별 개별 설정을 줄 수 있습니다.
+- 저장소별 `GITHUB_TOKEN` 개별 설정 값은 macOS Keychain(service=`squire.github.token`)에 저장됩니다.
+- 저장소별 토큰은 SQLite DB에 평문으로 저장하지 않습니다.
 - 기본 DB 파일은 `squire-engine/data/squire.db` 입니다.
 - 필요 시 `SQUIRE_DB_PATH`로 DB 경로를 변경할 수 있습니다.
+
+### Keychain 수동 명령 (macOS)
+
+```bash
+# 저장/갱신 (토큰은 프롬프트로 입력)
+security add-generic-password -a owner/repo -s squire.github.token -U -w
+
+# 조회
+security find-generic-password -a owner/repo -s squire.github.token -w
+
+# 삭제
+security delete-generic-password -a owner/repo -s squire.github.token
+```
 
 ## 4) 버전/설치 확인
 
@@ -62,6 +80,6 @@ npm -v
 
 ## 5) 빠른 준비 체크리스트
 
-- `.env` 파일 생성 및 필수 변수(`GITHUB_TOKEN`) 입력 완료
+- `.env` 파일 생성 및 전역 기본 토큰(`GITHUB_TOKEN`) 필요 여부 확인 완료
 - `uv sync`로 엔진 의존성 설치 가능
 - `npm install`로 클라이언트 의존성 설치 가능

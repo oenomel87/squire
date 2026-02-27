@@ -11,6 +11,20 @@ def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _normalize_optional_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_optional_base_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().rstrip("/")
+    return normalized or None
+
+
 def connect(settings: Settings) -> sqlite3.Connection:
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -27,6 +41,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS repositories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT NOT NULL UNIQUE,
+            github_base_url TEXT,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -75,6 +90,20 @@ def init_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    _ensure_repository_github_columns(conn)
+
+
+def _ensure_repository_github_columns(conn: sqlite3.Connection) -> None:
+    if not repository_has_column(conn, "github_base_url"):
+        conn.execute("ALTER TABLE repositories ADD COLUMN github_base_url TEXT")
+
+
+def repository_has_column(conn: sqlite3.Connection, column_name: str) -> bool:
+    columns = {
+        str(row["name"])
+        for row in conn.execute("PRAGMA table_info(repositories)").fetchall()
+    }
+    return column_name in columns
 
 
 def get_repository(
@@ -110,6 +139,72 @@ def upsert_repository(conn: sqlite3.Connection, repo_full_name: str) -> tuple[in
         (repo_full_name, now, now),
     )
     return int(cursor.lastrowid), True
+
+
+def update_repository_github_config(
+    conn: sqlite3.Connection,
+    repo_full_name: str,
+    *,
+    github_token: str | None = None,
+    github_base_url: str | None = None,
+    update_token: bool = False,
+    update_base_url: bool = False,
+) -> bool:
+    if not update_token and not update_base_url:
+        return get_repository(conn, repo_full_name) is not None
+
+    clauses: list[str] = ["updated_at = ?"]
+    params: list[Any] = [utcnow_iso()]
+    has_legacy_token_column = repository_has_column(conn, "github_token")
+
+    if update_token and has_legacy_token_column:
+        clauses.append("github_token = ?")
+        params.append(_normalize_optional_token(github_token))
+
+    if update_base_url:
+        clauses.append("github_base_url = ?")
+        params.append(_normalize_optional_base_url(github_base_url))
+
+    if len(clauses) == 1:
+        # Only token update was requested, but legacy token column doesn't exist.
+        return get_repository(conn, repo_full_name) is not None
+
+    params.append(repo_full_name)
+    cursor = conn.execute(
+        f"""
+        UPDATE repositories
+        SET {", ".join(clauses)}
+        WHERE full_name = ?
+        """,
+        tuple(params),
+    )
+    return cursor.rowcount > 0
+
+
+def get_repository_legacy_github_token(
+    conn: sqlite3.Connection, repo_full_name: str
+) -> str | None:
+    if not repository_has_column(conn, "github_token"):
+        return None
+
+    row = conn.execute(
+        "SELECT github_token FROM repositories WHERE full_name = ?",
+        (repo_full_name,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _normalize_optional_token(row["github_token"])
+
+
+def clear_repository_legacy_github_token(
+    conn: sqlite3.Connection, repo_full_name: str
+) -> bool:
+    return update_repository_github_config(
+        conn,
+        repo_full_name,
+        github_token=None,
+        update_token=True,
+    )
 
 
 def list_repositories(conn: sqlite3.Connection) -> list[sqlite3.Row]:

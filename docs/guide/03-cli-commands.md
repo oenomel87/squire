@@ -34,11 +34,21 @@ uv run squire --help
 ### `squire repo add REPO_FULL_NAME`
 
 - 설명: 저장소 등록 + 즉시 1회 동기화
+- 옵션:
+  - `--github-token`: 해당 저장소 전용 GitHub 토큰 개별 설정 (macOS Keychain에 저장)
+  - `--github-base-url`: 해당 저장소 전용 GitHub API Base URL 개별 설정
 - 예시:
 
 ```bash
 squire repo add owner/repo
+squire repo add owner/repo --github-token <repo_token>
+squire repo add owner/repo --github-base-url https://github.mycompany.com/api/v3
 ```
+
+참고:
+
+- 저장소별 토큰은 SQLite가 아닌 macOS Keychain(service=`squire.github.token`)에 저장됩니다.
+- `squire repo remove owner/repo` 시 해당 저장소 Keychain 토큰도 함께 삭제됩니다.
 
 ### `squire repo list`
 
@@ -47,6 +57,15 @@ squire repo add owner/repo
 
 ```bash
 squire repo list
+```
+
+### `squire repo migrate-legacy-tokens`
+
+- 설명: 과거 SQLite에 저장된 레거시 토큰을 macOS Keychain으로 이전하고 DB 값 제거
+- 예시:
+
+```bash
+squire repo migrate-legacy-tokens
 ```
 
 ### `squire repo remove REPO_FULL_NAME`

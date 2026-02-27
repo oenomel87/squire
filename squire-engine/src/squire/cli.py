@@ -9,6 +9,14 @@ import typer
 from . import db
 from .config import get_settings
 from .github import GitHubClient, GitHubError
+from .keychain import (
+    KeychainCommandError,
+    KeychainUnavailableError,
+    delete_github_token,
+    get_github_token,
+    has_github_token,
+    set_github_token,
+)
 from .sync import sync_repository, validate_repo_full_name
 
 app = typer.Typer(no_args_is_help=True, help="Squire CLI")
@@ -50,12 +58,31 @@ def _open_connection():
         conn.close()
 
 
-def _open_github_client() -> GitHubClient:
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _resolve_repo_github_config(conn, repo_full_name: str) -> tuple[str | None, str]:
+    repository = _require_registered_repo(conn, repo_full_name)
     settings = get_settings()
+    repo_token = get_github_token(repo_full_name)
+    if repo_token is None:
+        repo_token = db.get_repository_legacy_github_token(conn, repo_full_name)
+    repo_base_url = _normalize_optional_text(repository["github_base_url"])
+    token = repo_token or settings.github_token
+    base_url = (repo_base_url or settings.github_base_url).rstrip("/")
+    return token, base_url
+
+
+def _open_github_client_for_repo(conn, repo_full_name: str) -> GitHubClient:
+    token, base_url = _resolve_repo_github_config(conn, repo_full_name)
     try:
         return GitHubClient(
-            token=settings.github_token,
-            base_url=settings.github_base_url,
+            token=token,
+            base_url=base_url,
         )
     except GitHubError as exc:
         _exit_with_error(str(exc))
@@ -87,7 +114,25 @@ def _require_pull_request(conn, repo_full_name: str, number: int):
 
 
 @repo_app.command("add")
-def repo_add(repo_full_name: str) -> None:
+def repo_add(
+    repo_full_name: str,
+    github_token: str | None = typer.Option(
+        None,
+        "--github-token",
+        help=(
+            "Repository-specific token (stored in macOS Keychain). "
+            "If omitted, keep existing/global. Pass empty string to clear."
+        ),
+    ),
+    github_base_url: str | None = typer.Option(
+        None,
+        "--github-base-url",
+        help=(
+            "Repository-specific GitHub API base URL. "
+            "If omitted, keep existing/global. Pass empty string to clear."
+        ),
+    ),
+) -> None:
     """Register repository and immediately sync once."""
 
     if not validate_repo_full_name(repo_full_name):
@@ -95,10 +140,29 @@ def repo_add(repo_full_name: str) -> None:
 
     with _open_connection() as conn:
         _, created_new = db.upsert_repository(conn, repo_full_name)
+        if github_token is not None:
+            token = _normalize_optional_text(github_token)
+            try:
+                if token:
+                    set_github_token(repo_full_name, token)
+                else:
+                    delete_github_token(repo_full_name)
+            except (KeychainCommandError, KeychainUnavailableError) as exc:
+                _exit_with_error(
+                    f"Failed to update macOS Keychain token for `{repo_full_name}`: {exc}"
+                )
+            db.clear_repository_legacy_github_token(conn, repo_full_name)
+
+        db.update_repository_github_config(
+            conn,
+            repo_full_name,
+            github_base_url=github_base_url,
+            update_base_url=github_base_url is not None,
+        )
         conn.commit()
 
         try:
-            with _open_github_client() as github:
+            with _open_github_client_for_repo(conn, repo_full_name) as github:
                 synced_count = sync_repository(conn, github, repo_full_name)
             conn.commit()
             typer.echo(
@@ -109,6 +173,11 @@ def repo_add(repo_full_name: str) -> None:
             if created_new:
                 db.remove_repository(conn, repo_full_name)
                 conn.commit()
+                if _normalize_optional_text(github_token):
+                    try:
+                        delete_github_token(repo_full_name)
+                    except KeychainCommandError:
+                        pass
             _exit_with_error(f"Failed to sync `{repo_full_name}`: {exc}")
 
 
@@ -125,7 +194,24 @@ def repo_list() -> None:
         for repo in repos:
             status = "active" if int(repo["is_active"]) == 1 else "inactive"
             last_synced_at = repo["last_synced_at"] or "-"
-            typer.echo(f"{repo['full_name']} [{status}] last_synced_at={last_synced_at}")
+            repo_name = str(repo["full_name"])
+            try:
+                has_keychain_token = has_github_token(repo_name)
+            except KeychainCommandError:
+                has_keychain_token = False
+            token_scope = (
+                "repo"
+                if has_keychain_token
+                or bool(db.get_repository_legacy_github_token(conn, repo_name))
+                else "global"
+            )
+            base_url = _normalize_optional_text(repo["github_base_url"]) or "<global>"
+            typer.echo(
+                f"{repo_name} [{status}] "
+                f"last_synced_at={last_synced_at} "
+                f"github_token={token_scope} "
+                f"github_base_url={base_url}"
+            )
 
 
 @repo_app.command("remove")
@@ -139,7 +225,51 @@ def repo_remove(repo_full_name: str) -> None:
         if not removed:
             _exit_with_error(f"Repository `{repo_full_name}` is not registered.")
 
+        try:
+            delete_github_token(repo_full_name)
+        except KeychainCommandError as exc:
+            _exit_with_error(
+                f"Removed repository row but failed to delete Keychain token: {exc}"
+            )
         typer.echo(f"Removed repository `{repo_full_name}`.")
+
+
+@repo_app.command("migrate-legacy-tokens")
+def repo_migrate_legacy_tokens() -> None:
+    """Move legacy DB tokens into macOS Keychain and clear DB copies."""
+
+    with _open_connection() as conn:
+        if not db.repository_has_column(conn, "github_token"):
+            typer.echo("No legacy DB token column detected. Nothing to migrate.")
+            return
+
+        repos = db.list_repositories(conn)
+        migrated = 0
+        failed = 0
+
+        for repo in repos:
+            repo_name = str(repo["full_name"])
+            legacy_token = db.get_repository_legacy_github_token(conn, repo_name)
+            if not legacy_token:
+                continue
+
+            try:
+                set_github_token(repo_name, legacy_token)
+                db.clear_repository_legacy_github_token(conn, repo_name)
+                migrated += 1
+            except (KeychainCommandError, KeychainUnavailableError) as exc:
+                failed += 1
+                typer.secho(
+                    f"{repo_name}: token migration failed - {exc}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+
+        conn.commit()
+
+    typer.echo(f"Migrated {migrated} legacy token(s) to macOS Keychain.")
+    if failed:
+        raise typer.Exit(code=1)
 
 
 @app.command("sync")
@@ -169,20 +299,20 @@ def sync(
             return
 
         errors = 0
-        with _open_github_client() as github:
-            for target in targets:
-                try:
+        for target in targets:
+            try:
+                with _open_github_client_for_repo(conn, target) as github:
                     synced = sync_repository(conn, github, target, full_sync=full)
-                    conn.commit()
-                    typer.echo(f"{target}: synced {synced} pull request(s).")
-                except (GitHubError, Exception) as exc:
-                    conn.rollback()
-                    errors += 1
-                    typer.secho(
-                        f"{target}: sync failed - {exc}",
-                        fg=typer.colors.RED,
-                        err=True,
-                    )
+                conn.commit()
+                typer.echo(f"{target}: synced {synced} pull request(s).")
+            except (GitHubError, Exception) as exc:
+                conn.rollback()
+                errors += 1
+                typer.secho(
+                    f"{target}: sync failed - {exc}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
 
         if errors:
             raise typer.Exit(code=1)
@@ -285,9 +415,8 @@ def files(
 
     with _open_connection() as conn:
         _require_registered_repo(conn, repo_full_name)
-
-    with _open_github_client() as github:
-        files_data = github.list_pull_files(repo_full_name, number)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            files_data = github.list_pull_files(repo_full_name, number)
 
     if not files_data:
         typer.echo("No changed files found.")
@@ -312,21 +441,20 @@ def diff(
 
     with _open_connection() as conn:
         _require_registered_repo(conn, repo_full_name)
-
-    with _open_github_client() as github:
-        if file_path:
-            files_data = github.list_pull_files(repo_full_name, number)
-            for file_data in files_data:
-                if file_data.get("filename") == file_path:
-                    patch = file_data.get("patch")
-                    if patch:
-                        typer.echo(patch)
-                    else:
-                        typer.echo(f"No text diff available for `{file_path}`.")
-                    return
-            _exit_with_error(f"`{file_path}` is not part of PR #{number}.")
-        else:
-            typer.echo(github.get_pull_diff(repo_full_name, number))
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            if file_path:
+                files_data = github.list_pull_files(repo_full_name, number)
+                for file_data in files_data:
+                    if file_data.get("filename") == file_path:
+                        patch = file_data.get("patch")
+                        if patch:
+                            typer.echo(patch)
+                        else:
+                            typer.echo(f"No text diff available for `{file_path}`.")
+                        return
+                _exit_with_error(f"`{file_path}` is not part of PR #{number}.")
+            else:
+                typer.echo(github.get_pull_diff(repo_full_name, number))
 
 
 @app.command("comments")
@@ -338,9 +466,8 @@ def comments(
 
     with _open_connection() as conn:
         _require_registered_repo(conn, repo_full_name)
-
-    with _open_github_client() as github:
-        comments_data = github.list_issue_comments(repo_full_name, number)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            comments_data = github.list_issue_comments(repo_full_name, number)
     typer.echo(json.dumps(comments_data, indent=2, ensure_ascii=False))
 
 
@@ -353,9 +480,8 @@ def reviews(
 
     with _open_connection() as conn:
         _require_registered_repo(conn, repo_full_name)
-
-    with _open_github_client() as github:
-        reviews_data = github.list_pull_reviews(repo_full_name, number)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            reviews_data = github.list_pull_reviews(repo_full_name, number)
     typer.echo(json.dumps(reviews_data, indent=2, ensure_ascii=False))
 
 
@@ -373,11 +499,10 @@ def _publish_github_comment(
     with _open_connection() as conn:
         _require_registered_repo(conn, repo_full_name)
         _require_pull_request(conn, repo_full_name, number)
+        comment_body = f"{prefix}\n\n{text}" if prefix else text
 
-    comment_body = f"{prefix}\n\n{text}" if prefix else text
-
-    with _open_github_client() as github:
-        created = github.create_issue_comment(repo_full_name, number, comment_body)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            created = github.create_issue_comment(repo_full_name, number, comment_body)
 
     comment_id = created.get("id", "-")
     comment_url = created.get("html_url", "-")

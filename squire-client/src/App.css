@@ -73,6 +73,11 @@
   flex-wrap: wrap;
 }
 
+.repo-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
 input,
 select,
 textarea,

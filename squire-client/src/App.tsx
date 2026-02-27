@@ -64,6 +64,8 @@ function App() {
 
   const [repoInput, setRepoInput] = useState('')
   const [repoFullSync, setRepoFullSync] = useState(false)
+  const [repoGitHubToken, setRepoGitHubToken] = useState('')
+  const [repoGitHubBaseUrl, setRepoGitHubBaseUrl] = useState('')
   const [reviewBody, setReviewBody] = useState('')
   const [reviewFile, setReviewFile] = useState('')
   const [reviewLine, setReviewLine] = useState('')
@@ -295,10 +297,17 @@ function App() {
 
     setBusy(true)
     try {
-      await addRepo(targetRepo, repoFullSync)
+      const githubToken = repoGitHubToken.trim()
+      const githubBaseUrl = repoGitHubBaseUrl.trim()
+      await addRepo(targetRepo, repoFullSync, {
+        githubToken: githubToken || undefined,
+        githubBaseUrl: githubBaseUrl || undefined,
+      })
       await reloadRepos(targetRepo)
       await reloadPulls(targetRepo, pullState)
       setRepoInput('')
+      setRepoGitHubToken('')
+      setRepoGitHubBaseUrl('')
       setNotice(`저장소 ${targetRepo} 등록 및 동기화를 완료했습니다.`)
     } catch (error) {
       setError(parseError(error))
@@ -458,16 +467,30 @@ function App() {
         <aside className="panel left reveal">
           <section className="section">
             <h2>저장소 관리</h2>
-            <form className="row" onSubmit={handleAddRepo}>
+            <form className="repo-form" onSubmit={handleAddRepo}>
+              <div className="row">
+                <input
+                  value={repoInput}
+                  onChange={(event) => setRepoInput(event.target.value)}
+                  placeholder="owner/repo"
+                />
+                <button type="submit" disabled={busy}>
+                  add
+                </button>
+              </div>
               <input
-                value={repoInput}
-                onChange={(event) => setRepoInput(event.target.value)}
-                placeholder="owner/repo"
+                type="password"
+                value={repoGitHubToken}
+                onChange={(event) => setRepoGitHubToken(event.target.value)}
+                placeholder="프로젝트 전용 GitHub token (optional)"
               />
-              <button type="submit" disabled={busy}>
-                add
-              </button>
+              <input
+                value={repoGitHubBaseUrl}
+                onChange={(event) => setRepoGitHubBaseUrl(event.target.value)}
+                placeholder="프로젝트 전용 GitHub base URL (optional)"
+              />
             </form>
+            <p className="small">프로젝트 토큰은 macOS Keychain에 저장되며 DB에는 평문 저장하지 않습니다.</p>
             <label className="check">
               <input
                 type="checkbox"
@@ -500,6 +523,11 @@ function App() {
             <p className="small">
               last_synced:{' '}
               {selectedRepoRecord?.last_synced_at ? formatDate(selectedRepoRecord.last_synced_at) : '-'}
+            </p>
+            <p className="small">
+              github config: token{' '}
+              {selectedRepoRecord?.has_custom_github_token ? 'project' : 'global'} · base_url{' '}
+              {selectedRepoRecord?.github_base_url || '<global>'}
             </p>
             <div className="row">
               <button type="button" onClick={() => handleSync(false)} disabled={!selectedRepo || busy}>
