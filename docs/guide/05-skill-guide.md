@@ -35,6 +35,13 @@
 
 `squire-pr-review` 스킬의 역할은 `squire` CLI 기반 PR 리뷰 워크플로우(저장소 등록/동기화/조회/코멘트 게시)를 Codex에서 재사용 가능하게 만드는 것입니다.
 
+권장 사전 설정(단일 엔진/단일 DB):
+
+```bash
+mkdir -p "$HOME/Library/Application Support/squire"
+export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"
+```
+
 설치 소스(이 프로젝트 기준):
 
 - 저장소: `oenomel87/squire`

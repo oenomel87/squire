@@ -75,4 +75,27 @@ cd <project-root>
 
 ### 로컬 DB를 별도 위치로 사용하고 싶은 경우
 
-- `SQUIRE_DB_PATH` 환경변수를 설정해 DB 파일 경로를 분리할 수 있습니다.
+- 단일 엔진 운영이라면 DB도 단일 경로로 고정하는 것을 권장합니다.
+- macOS 권장 경로: `$HOME/Library/Application Support/squire/squire.db`
+
+```bash
+mkdir -p "$HOME/Library/Application Support/squire"
+export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"
+```
+
+영구 적용:
+
+```bash
+echo 'export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### `attempt to write a readonly database` 오류
+
+- 보통 DB 경로가 현재 실행 환경에서 쓰기 불가능한 위치를 가리킬 때 발생합니다.
+- `SQUIRE_DB_PATH`를 쓰기 가능한 단일 경로로 고정하고 재시도하세요.
+
+```bash
+mkdir -p "$HOME/Library/Application Support/squire"
+export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"
+```

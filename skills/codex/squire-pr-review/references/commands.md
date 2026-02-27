@@ -4,6 +4,12 @@
 
 - `uv` installed
 - `GITHUB_TOKEN` and `GITHUB_BASE_URL` set in `squire-engine/.env`
+- single shared DB path configured (recommended):
+
+```bash
+mkdir -p "$HOME/Library/Application Support/squire"
+export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"
+```
 
 ## Install Once
 
@@ -61,3 +67,6 @@ squire review publish-local 123 --repo owner/repo --all
 - `Repository ... is not registered`: run `squire repo add owner/repo` first.
 - `PR #... not found in local DB`: run `squire sync --repo owner/repo`.
 - `403/401 from GitHub`: verify token permission and `GITHUB_BASE_URL`.
+- `attempt to write a readonly database`: set `SQUIRE_DB_PATH` to a writable
+  shared path and retry (recommended:
+  `$HOME/Library/Application Support/squire/squire.db`).

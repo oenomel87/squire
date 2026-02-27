@@ -52,8 +52,21 @@ cp .env.sample .env
 - `GITHUB_TOKEN`/`GITHUB_BASE_URL`는 전역 기본값이며, 저장소 등록 시 프로젝트별 개별 설정을 줄 수 있습니다.
 - 저장소별 `GITHUB_TOKEN` 개별 설정 값은 macOS Keychain(service=`squire.github.token`)에 저장됩니다.
 - 저장소별 토큰은 SQLite DB에 평문으로 저장하지 않습니다.
-- 기본 DB 파일은 `squire-engine/data/squire.db` 입니다.
-- 필요 시 `SQUIRE_DB_PATH`로 DB 경로를 변경할 수 있습니다.
+- 단일 엔진 운영 시 DB도 단일 경로로 고정하는 것을 권장합니다.
+  - macOS 권장 경로: `$HOME/Library/Application Support/squire/squire.db`
+- `SQUIRE_DB_PATH`로 DB 경로를 명시적으로 고정하세요.
+
+```bash
+mkdir -p "$HOME/Library/Application Support/squire"
+export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"
+```
+
+셸 시작 시 자동 적용하려면:
+
+```bash
+echo 'export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"' >> ~/.zshrc
+source ~/.zshrc
+```
 
 ### Keychain 수동 명령 (macOS)
 

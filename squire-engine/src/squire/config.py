@@ -26,11 +26,30 @@ class Settings:
     db_path: Path
 
 
+def _find_git_root(start: Path) -> Path | None:
+    current = start.resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def _default_db_path() -> Path:
+    git_root = _find_git_root(Path.cwd())
+    if git_root is not None:
+        return git_root / ".squire" / "squire.db"
+    return PROJECT_ROOT / "data" / "squire.db"
+
+
 def get_settings() -> Settings:
     load_environment()
 
-    default_db_path = PROJECT_ROOT / "data" / "squire.db"
-    db_path = Path(os.getenv("SQUIRE_DB_PATH", str(default_db_path))).expanduser()
+    raw_db_path = os.getenv("SQUIRE_DB_PATH")
+    db_path = (
+        Path(raw_db_path).expanduser()
+        if raw_db_path
+        else _default_db_path()
+    )
 
     token = os.getenv("GITHUB_TOKEN")
     base_url = os.getenv("GITHUB_BASE_URL")

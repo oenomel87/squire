@@ -12,6 +12,7 @@ Use this skill to run the `squire` CLI end-to-end for repository registration, P
 - Confirm `uv` is installed and available.
 - Ensure target `squire-engine/.env` has `GITHUB_TOKEN` and `GITHUB_BASE_URL`.
 - Prefer a globally installed `squire` command for cross-project usage.
+- Use a single shared DB path via `SQUIRE_DB_PATH` (recommended: `$HOME/Library/Application Support/squire/squire.db`).
 - If repo/PR is missing locally, run sync first.
 
 ## Install CLI

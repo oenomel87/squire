@@ -15,6 +15,11 @@
 3. GitHub 토큰이 설정되어 있어야 합니다. 아래 중 하나:
    - 전역: `squire-engine/.env`에 `GITHUB_TOKEN` 설정
    - 저장소별: `squire repo add` 시 `--github-token` 옵션 사용 (macOS Keychain에 저장)
+4. 단일 엔진/단일 DB 운영을 위해 `SQUIRE_DB_PATH`를 고정합니다(권장).
+   ```bash
+   mkdir -p "$HOME/Library/Application Support/squire"
+   export SQUIRE_DB_PATH="$HOME/Library/Application Support/squire/squire.db"
+   ```
 
 ## 워크플로우
 
@@ -122,6 +127,5 @@ squire review status 123 --repo owner/repo --set pending|in-progress|done
 
 - `Repository ... is not registered`: `squire repo add owner/repo`를 먼저 실행합니다.
 - `PR #... not found in local DB`: `squire sync --repo owner/repo`를 실행합니다.
-- `403/401 from GitHub`: 토큰 권한과 `GITHUB_BASE_URL` 설정을 확인합니다.
-  - Fine-grained PAT 최소 권한: `Pull Requests: Read`, `Contents: Read`
-  - 코멘트 게시 시: `Pull Requests: Write` 추가
+- `403/401 from GitHub`: 토큰 권한과 `GITHUB_BASE_URL` 설정을 확인합니다 (Fine-grained PAT 최소 권한: `Pull Requests: Read`, `Contents: Read`; 코멘트 게시 시 `Pull Requests: Write` 추가).
+- `attempt to write a readonly database`: `SQUIRE_DB_PATH`를 쓰기 가능한 단일 경로로 고정한 뒤 재시도합니다 (권장: `$HOME/Library/Application Support/squire/squire.db`).
