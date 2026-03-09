@@ -2,17 +2,13 @@
 
 ## 1) 기본 형식
 
-- 도움말: `squire --help`
-- 하위 그룹 도움말: `squire repo --help`, `squire review --help`
+- 로컬 실행(권장): `./scripts/squire.sh --help`
+- 하위 그룹 도움말: `./scripts/squire.sh repo --help`, `./scripts/squire.sh review --help`
+- 전역 설치 후: `squire --help`
 
-엔진 디렉터리 내부에서 실행 시:
-
-```bash
-cd <project-root>/squire-engine
-uv run squire --help
-```
-
+저장소 루트에서 `./scripts/squire.sh ...`를 사용하면 `squire-engine` 디렉터리로 직접 이동할 필요가 없습니다.
 전역 설치 후에는 어느 디렉터리에서든 `squire ...` 실행이 가능합니다.
+아래 예시는 `squire ...` 기준으로 적지만, 전역 설치 전에는 같은 위치에 `./scripts/squire.sh`를 사용하면 됩니다.
 
 ## 2) 최상위 커맨드
 

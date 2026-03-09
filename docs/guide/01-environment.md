@@ -1,14 +1,20 @@
 # 01. 동작 환경 구성
 
+> 이 문서의 예시에서 `~/squire`는 이 저장소를 clone한 디렉터리를 의미합니다.
+> 실제 경로가 다르다면 자신의 경로로 바꿔 읽으세요.
+
 ## 1) 프로젝트 구조
 
-- 루트: `<project-root>` (예: `/path/to/squire`)
-- 엔진(백엔드+CLI): `squire-engine`
-- 웹 클라이언트: `squire-client`
-- 문서: `docs`
-- AI 에이전트 스킬:
-  - Codex: `skills/codex/squire-pr-review`
-  - Claude Code: `skills/claude-code/squire-pr-review`
+```
+~/squire/
+├── squire-engine/    # 엔진(백엔드+CLI)
+├── squire-client/    # 웹 클라이언트
+├── docs/             # 문서
+├── scripts/          # 실행 스크립트
+└── skills/           # AI 에이전트 스킬
+    ├── codex/squire-pr-review
+    └── claude-code/squire-pr-review
+```
 
 ## 2) 필수 도구
 
@@ -19,11 +25,20 @@
 
 ## 3) 엔진 환경 변수
 
-`<project-root>/squire-engine/.env.sample` 기준으로 `.env` 파일을 준비합니다.
+`~/squire/squire-engine/.env` 파일을 아래 내용으로 새로 만듭니다.
 
 ```bash
-cd <project-root>/squire-engine
-cp .env.sample .env
+cat <<EOF > ~/squire/squire-engine/.env
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+# GITHUB_BASE_URL=https://github.mycompany.com/api/v3  # GitHub Enterprise 사용 시만 설정
+EOF
+```
+
+또는 직접 텍스트 에디터로 `~/squire/squire-engine/.env`를 열고 아래 내용을 입력해도 됩니다.
+
+```dotenv
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+# GITHUB_BASE_URL=https://github.mycompany.com/api/v3
 ```
 
 필수 값:
@@ -35,6 +50,9 @@ cp .env.sample .env
 - `GITHUB_BASE_URL`
   - 미설정 시 기본값 `https://api.github.com` 사용
   - GitHub Enterprise Server 사용 시 `.env.sample` 형식대로 설정: `https://github.hostname.url/api/v3`
+  - review thread 조회용 GraphQL endpoint는 이 값에서 자동 파생
+    - `https://api.github.com` -> `https://api.github.com/graphql`
+    - `https://github.hostname.url/api/v3` -> `https://github.hostname.url/api/graphql`
 
 `GITHUB_TOKEN` 권한 가이드:
 
@@ -48,7 +66,7 @@ cp .env.sample .env
 
 참고:
 
-- 구현은 `GITHUB_BASE_URL`만 사용합니다.
+- 구현은 별도 `GITHUB_GRAPHQL_URL` 환경변수 없이 `GITHUB_BASE_URL`만 사용합니다.
 - `GITHUB_TOKEN`/`GITHUB_BASE_URL`는 전역 기본값이며, 저장소 등록 시 프로젝트별 개별 설정을 줄 수 있습니다.
 - 저장소별 `GITHUB_TOKEN` 개별 설정 값은 macOS Keychain(service=`squire.github.token`)에 저장됩니다.
 - 저장소별 토큰은 SQLite DB에 평문으로 저장하지 않습니다.

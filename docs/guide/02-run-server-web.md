@@ -3,9 +3,9 @@
 ## 1) 서버(Engine) 실행
 
 ```bash
-cd <project-root>/squire-engine
-uv sync
-uv run squire serve --host 127.0.0.1 --port 8484
+cd ~/squire
+uv sync --project squire-engine
+./scripts/squire.sh serve --host 127.0.0.1 --port 8484
 ```
 
 확인:
@@ -22,9 +22,9 @@ curl http://127.0.0.1:8484/health
 새 터미널에서:
 
 ```bash
-cd <project-root>/squire-client
-npm install
-npm run dev -- --host 127.0.0.1 --port 5173
+cd ~/squire
+npm --prefix squire-client install
+npm --prefix squire-client run dev -- --host 127.0.0.1 --port 5173
 ```
 
 확인:
@@ -36,7 +36,7 @@ npm run dev -- --host 127.0.0.1 --port 5173
 - 엔진 포트 변경:
 
 ```bash
-uv run squire serve --host 127.0.0.1 --port 9000
+./scripts/squire.sh serve --host 127.0.0.1 --port 9000
 ```
 
 - 클라이언트 API 대상 변경:
@@ -46,8 +46,9 @@ uv run squire serve --host 127.0.0.1 --port 9000
 예시:
 
 ```bash
-cd <project-root>/squire-client
-VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 npm run dev -- --host 127.0.0.1 --port 5173
+cd ~/squire
+VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 \
+  npm --prefix squire-client run dev -- --host 127.0.0.1 --port 5173
 ```
 
 ## 4) 실행 순서 권장
@@ -56,3 +57,9 @@ VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 npm run dev -- --host 127.0.0.1 -
 2. 클라이언트 실행
 3. 브라우저에서 UI 접속
 4. 저장소 등록 후 PR 동기화 진행
+
+## 5) 경로 혼선 없이 쓰는 방법
+
+- 로컬 실행 기준은 항상 저장소 루트입니다.
+- CLI는 `./scripts/squire.sh ...`로 실행하면 `squire-engine` 디렉터리로 직접 이동할 필요가 없습니다.
+- 전역 설치를 완료했다면 `squire ...`로 대체해도 됩니다.

@@ -2,12 +2,14 @@
 
 이 문서는 `squire` 커맨드를 다른 프로젝트 디렉터리에서도 바로 사용하도록 전역 등록하는 방법을 설명합니다.
 
-`<project-root>`는 `squire` 저장소 루트 경로를 의미합니다.
+> 이 문서의 예시에서 `~/squire`는 이 저장소를 clone한 디렉터리를 의미합니다. 실제 경로가 다르다면 자신의 경로로 바꿔 읽으세요.
+
+전역 설치를 원하지 않는다면 저장소 루트에서 `./scripts/squire.sh ...`를 사용해도 됩니다.
 
 ## 1) 권장 방법: 프로젝트 스크립트 사용
 
 ```bash
-cd <project-root>
+cd ~/squire
 ./scripts/install-squire-tool.sh
 ```
 
@@ -27,7 +29,7 @@ squire --help
 ## 2) 수동 방법: `uv` 직접 실행
 
 ```bash
-uv tool install --editable <project-root>/squire-engine --force
+uv tool install --editable ~/squire/squire-engine --force
 uv tool update-shell
 squire --help
 ```
@@ -53,7 +55,7 @@ squire sync
 코드 변경 후 최신 상태를 반영하려면 다시 설치합니다.
 
 ```bash
-cd <project-root>
+cd ~/squire
 ./scripts/install-squire-tool.sh
 ```
 
@@ -68,6 +70,9 @@ cd <project-root>
 ### 실행은 되지만 GitHub 호출 실패
 
 - `squire-engine/.env`의 `GITHUB_TOKEN`, `GITHUB_BASE_URL` 확인
+- review thread 조회 기능은 GraphQL endpoint도 사용하지만, 별도 `GITHUB_GRAPHQL_URL` 설정은 필요 없습니다.
+  - `GITHUB_BASE_URL=https://api.github.com` -> `https://api.github.com/graphql`
+  - `GITHUB_BASE_URL=https://github.example.com/api/v3` -> `https://github.example.com/api/graphql`
 - 토큰 권한 확인
   - 읽기 전용: `Pull Requests: Read`, `Contents: Read`
   - 코멘트 게시 시: `Pull Requests: Write` 추가

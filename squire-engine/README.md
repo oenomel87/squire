@@ -27,20 +27,23 @@
 
 ## 기본 명령
 
+저장소 루트(`~/squire`)에서 아래처럼 실행하면 `squire-engine` 디렉터리로 직접 이동할 필요가 없습니다.
+
 ```bash
-uv sync
-uv run squire --help
-uv run squire serve --host 127.0.0.1 --port 8484
+cd ~/squire
+uv sync --project squire-engine
+./scripts/squire.sh --help
+./scripts/squire.sh serve --host 127.0.0.1 --port 8484
 ```
 
 저장소 등록 및 즉시 동기화:
 
 ```bash
-uv run squire repo add owner/repo
-uv run squire repo add owner/repo --github-token <repo_token>
-uv run squire repo add owner/repo --github-base-url https://github.mycompany.com/api/v3
-uv run squire repo migrate-legacy-tokens
-uv run squire repo list
+./scripts/squire.sh repo add owner/repo
+./scripts/squire.sh repo add owner/repo --github-token <repo_token>
+./scripts/squire.sh repo add owner/repo --github-base-url https://github.mycompany.com/api/v3
+./scripts/squire.sh repo migrate-legacy-tokens
+./scripts/squire.sh repo list
 ```
 
 Keychain 수동 관리:
@@ -59,22 +62,22 @@ security delete-generic-password -a owner/repo -s squire.github.token
 PR 동기화 및 로컬 조회:
 
 ```bash
-uv run squire sync
-uv run squire sync --repo owner/repo --full
-uv run squire list --repo owner/repo --state open
-uv run squire show 123 --repo owner/repo
-uv run squire review-threads 123 --repo owner/repo
-uv run squire review-thread show <thread-id> --repo owner/repo
-uv run squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
+./scripts/squire.sh sync
+./scripts/squire.sh sync --repo owner/repo --full
+./scripts/squire.sh list --repo owner/repo --state open
+./scripts/squire.sh show 123 --repo owner/repo
+./scripts/squire.sh review-threads 123 --repo owner/repo
+./scripts/squire.sh review-thread show <thread-id> --repo owner/repo
+./scripts/squire.sh create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
 ```
 
 실제 GitHub PR에 리뷰 의견 코멘트 게시 (approve/merge 동작 없음):
 
 ```bash
-uv run squire review publish 123 --repo owner/repo --body "의견 내용"
+./scripts/squire.sh review publish 123 --repo owner/repo --body "의견 내용"
 
 # 로컬에 저장된 리뷰 코멘트를 GitHub에 게시
-uv run squire review publish-local 123 --repo owner/repo --all
+./scripts/squire.sh review publish-local 123 --repo owner/repo --all
 ```
 
 `squire create`/`review publish`/`publish-local`은 모두 `Pull Requests: Write` 권한이 필요합니다.
@@ -86,7 +89,7 @@ uv run squire review publish-local 123 --repo owner/repo --all
 실행:
 
 ```bash
-uv run squire serve --reload
+./scripts/squire.sh serve --reload
 ```
 
 주요 엔드포인트:

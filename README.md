@@ -2,10 +2,47 @@
 
 로컬 환경에서 GitHub PR을 조회/동기화하고, AI 리뷰 코멘트를 GitHub에 바로 쓰지 않고 로컬 DB에 저장해 검토할 수 있는 프로젝트입니다.
 
+> 이 문서의 예시에서 `~/squire`는 이 저장소를 clone한 디렉터리를 의미합니다.
+> 실제 경로가 다르다면 자신의 경로로 바꿔 읽으세요.
+
 ## 구성
 
 - `squire-engine`: FastAPI + CLI(`squire`) + SQLite
 - `squire-client`: React(Vite) 기반 대시보드 UI
+
+## Quick Start
+
+아래 명령을 순서대로 실행하면 5분 안에 로컬에서 Squire를 사용할 수 있습니다.
+
+```bash
+# 1. 저장소 클론
+git clone https://github.com/oenomel87/squire.git ~/squire
+cd ~/squire
+
+# 2. 환경 변수 설정 (.env 파일 생성)
+cat <<EOF > squire-engine/.env
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+EOF
+
+# 3. Engine 실행 (터미널 1)
+uv sync --project squire-engine
+./scripts/squire.sh serve --host 127.0.0.1 --port 8484
+```
+
+새 터미널을 열고:
+
+```bash
+# 4. Client 실행 (터미널 2)
+cd ~/squire
+npm --prefix squire-client install
+npm --prefix squire-client run dev -- --host 127.0.0.1 --port 5173
+```
+
+브라우저에서 [http://127.0.0.1:5173](http://127.0.0.1:5173) 에 접속하면 대시보드를 확인할 수 있습니다.
+
+Engine이 정상 작동하는지 확인하려면 [http://127.0.0.1:8484/docs](http://127.0.0.1:8484/docs) 에서 API 문서를 열어보세요.
+
+더 자세한 설정은 아래 섹션과 [상세 사용 가이드](./docs/guide/README.md)를 참고하세요.
 
 ## 상세 가이드
 
@@ -15,14 +52,18 @@
 
 ### 1) Engine 환경 변수
 
-`<project-root>/squire-engine/.env`에 아래 값을 설정합니다.
+`~/squire/squire-engine/.env` 파일을 만들고 아래 값을 설정합니다.
 
 - `GITHUB_TOKEN` (모든 저장소를 Keychain 토큰으로만 운영하지 않는 경우)
 - `GITHUB_BASE_URL` (GitHub Enterprise Server 사용 시만 설정)
   - 예시: `https://github.mycompany.com/api/v3`
   - github.com 사용 시 비워 두거나 항목을 삭제합니다.
+  - 리뷰 스레드 조회용 GraphQL endpoint는 별도 환경변수 없이 이 값에서 자동 파생합니다.
+    - `https://api.github.com` -> `https://api.github.com/graphql`
+    - `https://github.mycompany.com/api/v3` -> `https://github.mycompany.com/api/graphql`
 
 기본값은 전역 설정이며, 저장소 등록 시 프로젝트별 개별 설정으로 덮어쓸 수 있습니다.
+별도 `GITHUB_GRAPHQL_URL`을 직접 설정할 필요는 없습니다.
 
 저장소별 토큰 개별 설정(`--github-token`)은 macOS Keychain에 저장됩니다.
 SQLite DB에는 저장소별 토큰 평문을 저장하지 않습니다.
@@ -48,9 +89,9 @@ SQLite DB에는 저장소별 토큰 평문을 저장하지 않습니다.
 ### 1) Engine 실행
 
 ```bash
-cd <project-root>/squire-engine
-uv sync
-uv run squire serve --host 127.0.0.1 --port 8484
+cd ~/squire
+uv sync --project squire-engine
+./scripts/squire.sh serve --host 127.0.0.1 --port 8484
 ```
 
 API 문서: [http://127.0.0.1:8484/docs](http://127.0.0.1:8484/docs)
@@ -58,9 +99,9 @@ API 문서: [http://127.0.0.1:8484/docs](http://127.0.0.1:8484/docs)
 ### 2) Client 실행
 
 ```bash
-cd <project-root>/squire-client
-npm install
-npm run dev -- --host 127.0.0.1 --port 5173
+cd ~/squire
+npm --prefix squire-client install
+npm --prefix squire-client run dev -- --host 127.0.0.1 --port 5173
 ```
 
 UI: [http://127.0.0.1:5173](http://127.0.0.1:5173)
@@ -68,7 +109,8 @@ UI: [http://127.0.0.1:5173](http://127.0.0.1:5173)
 클라이언트는 기본적으로 `http://127.0.0.1:8484`의 엔진 API에 연결합니다. 엔진 포트를 변경한 경우 `VITE_SQUIRE_API_BASE_URL` 환경변수를 설정하세요.
 
 ```bash
-VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 npm run dev -- --host 127.0.0.1 --port 5173
+VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 \
+  npm --prefix squire-client run dev -- --host 127.0.0.1 --port 5173
 ```
 
 ## 전역 커맨드 등록 (다른 프로젝트에서도 사용)
@@ -76,7 +118,7 @@ VITE_SQUIRE_API_BASE_URL=http://127.0.0.1:9000 npm run dev -- --host 127.0.0.1 -
 아래 스크립트를 한 번 실행하면 `squire` 커맨드를 전역으로 등록할 수 있습니다.
 
 ```bash
-cd <project-root>
+cd ~/squire
 ./scripts/install-squire-tool.sh
 ```
 
@@ -144,17 +186,17 @@ cp skills/claude-code/squire-pr-review/squire-pr-review.md \
 ## 기본 사용 흐름
 
 ```bash
-cd <project-root>/squire-engine
+cd ~/squire
 
 # 저장소 등록 + 즉시 동기화
-uv run squire repo add owner/repo
+./scripts/squire.sh repo add owner/repo
 
 # 프로젝트별 GitHub 설정 개별 지정
-uv run squire repo add owner/repo --github-token <repo_token>
-uv run squire repo add owner/repo --github-base-url https://github.mycompany.com/api/v3
+./scripts/squire.sh repo add owner/repo --github-token <repo_token>
+./scripts/squire.sh repo add owner/repo --github-base-url https://github.mycompany.com/api/v3
 
 # (선택) 과거 DB 평문 토큰을 Keychain으로 마이그레이션
-uv run squire repo migrate-legacy-tokens
+./scripts/squire.sh repo migrate-legacy-tokens
 
 # macOS Keychain 직접 관리
 security add-generic-password -a owner/repo -s squire.github.token -U -w
@@ -162,23 +204,25 @@ security find-generic-password -a owner/repo -s squire.github.token -w
 security delete-generic-password -a owner/repo -s squire.github.token
 
 # 증분 동기화
-uv run squire sync --repo owner/repo
+./scripts/squire.sh sync --repo owner/repo
 
 # 전체 동기화 강제
-uv run squire sync --repo owner/repo --full
+./scripts/squire.sh sync --repo owner/repo --full
 
 # PR 조회
-uv run squire list --repo owner/repo --state open
-uv run squire show 123 --repo owner/repo
+./scripts/squire.sh list --repo owner/repo --state open
+./scripts/squire.sh show 123 --repo owner/repo
+./scripts/squire.sh review-threads 123 --repo owner/repo
+./scripts/squire.sh review-thread show <thread-id> --repo owner/repo
 
 # 새 PR 생성
-uv run squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
+./scripts/squire.sh create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
 
 # 실제 GitHub PR에 의견 코멘트 추가 (상태 변경 없음)
-uv run squire review publish 123 --repo owner/repo --body "의견 내용"
+./scripts/squire.sh review publish 123 --repo owner/repo --body "의견 내용"
 
 # 로컬 리뷰 코멘트를 GitHub에 게시
-uv run squire review publish-local 123 --repo owner/repo --all
+./scripts/squire.sh review publish-local 123 --repo owner/repo --all
 ```
 
 참고: 실제 PR 생성/코멘트 추가에는 `GITHUB_TOKEN`에 `Pull Requests: Write` 권한이 필요합니다.

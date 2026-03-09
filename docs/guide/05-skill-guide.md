@@ -4,8 +4,8 @@
 
 - 스킬 이름: `squire-pr-review`
 - 위치:
-  - Codex: `<project-root>/skills/codex/squire-pr-review`
-  - Claude Code: `<project-root>/skills/claude-code/squire-pr-review`
+  - Codex: `~/squire/skills/codex/squire-pr-review`
+  - Claude Code: `~/squire/skills/claude-code/squire-pr-review`
 - 목적:
   - `squire` CLI 설치/등록
   - 저장소 등록 및 동기화
@@ -87,7 +87,7 @@ $squire-pr-review를 사용해 owner/repo를 등록하고 최신 PR을 동기화
 
 ```bash
 mkdir -p /path/to/project/.claude/commands
-cp <project-root>/skills/claude-code/squire-pr-review/squire-pr-review.md \
+cp ~/squire/skills/claude-code/squire-pr-review/squire-pr-review.md \
    /path/to/project/.claude/commands/
 ```
 
@@ -105,7 +105,7 @@ cp <project-root>/skills/claude-code/squire-pr-review/squire-pr-review.md \
 2. 필요 시 `scripts/install_squire_cli.sh`로 CLI를 전역 설치합니다.
 3. `squire repo add`로 저장소 등록/초기 동기화를 수행합니다.
 4. `squire sync`(증분) 또는 `--full`(전체)로 동기화합니다.
-5. `squire list/show/files/diff/comments/reviews`로 PR 문맥을 수집합니다.
+5. `squire list/show/files/diff/comments/reviews/review-threads`로 PR 문맥을 수집합니다.
 6. `squire review publish` 또는 `publish-local`로 코멘트를 게시합니다.
 
 ## 5) 운영 팁
@@ -113,3 +113,4 @@ cp <project-root>/skills/claude-code/squire-pr-review/squire-pr-review.md \
 - 다수 저장소 운영 시 `squire repo list`와 `squire sync` 조합으로 일괄 갱신할 수 있습니다.
 - PR 코멘트 게시 전 `squire review add`로 로컬 저장 후 일괄 게시하면 추적이 쉽습니다.
 - 엔터프라이즈 환경에서는 `.env`의 `GITHUB_BASE_URL`을 조직 API 엔드포인트로 고정해 관리하세요.
+  - review thread 조회용 GraphQL endpoint는 `GITHUB_BASE_URL`에서 자동 파생됩니다.
