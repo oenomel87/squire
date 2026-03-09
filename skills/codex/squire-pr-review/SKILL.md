@@ -89,6 +89,8 @@ squire review add 123 --repo owner/repo --severity warning --body "local finding
 squire review publish-local 123 --repo owner/repo --all
 ```
 
+If a local review was saved with `--file` and `--line`, `publish-local` will try to post it as a GitHub inline file comment first and fall back to a regular PR comment if the diff line cannot be mapped.
+
 ## Guardrails
 
 - Do not run approve/merge/close/reopen or any PR state-changing actions.

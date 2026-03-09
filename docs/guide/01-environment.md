@@ -42,7 +42,7 @@ cp .env.sample .env
 - 읽기 전용 기능(등록/동기화/조회) 기준 최소 권한:
   - `Pull Requests: Read`
   - `Contents: Read`
-- 코멘트 게시(`squire review publish`, `squire review publish-local`)를 사용할 경우:
+- PR 생성 또는 코멘트 게시(`squire create`, `squire review publish`, `squire review publish-local`)를 사용할 경우:
   - `Pull Requests: Write` 추가 필요
 - `PAT classic`의 `repo` 전체 권한은 필수 아님
 

@@ -8,6 +8,17 @@ import httpx
 class GitHubError(RuntimeError):
     """Raised when GitHub API communication fails."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        path: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.path = path
+
 
 class GitHubClient:
     def __init__(self, *, token: str | None, base_url: str | None) -> None:
@@ -62,7 +73,9 @@ class GitHubClient:
             except ValueError:
                 message = response.text
             raise GitHubError(
-                f"GitHub API error ({response.status_code}) on `{path}`: {message}"
+                f"GitHub API error ({response.status_code}) on `{path}`: {message}",
+                status_code=response.status_code,
+                path=path,
             )
 
         return response
@@ -145,4 +158,57 @@ class GitHubClient:
             "POST",
             f"repos/{repo_full_name}/issues/{issue_number}/comments",
             json_body={"body": body},
+        ).json()
+
+    def create_pull_review_comment(
+        self,
+        repo_full_name: str,
+        number: int,
+        *,
+        body: str,
+        commit_id: str,
+        path: str,
+        line: int,
+        side: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"repos/{repo_full_name}/pulls/{number}/comments",
+            json_body={
+                "body": body,
+                "commit_id": commit_id,
+                "path": path,
+                "line": line,
+                "side": side,
+            },
+        ).json()
+
+    def create_pull_request(
+        self,
+        repo_full_name: str,
+        *,
+        title: str,
+        head: str,
+        base: str,
+        body: str | None = None,
+        draft: bool = False,
+        maintainer_can_modify: bool = True,
+        head_repo: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "title": title,
+            "head": head,
+            "base": base,
+            "draft": draft,
+            "maintainer_can_modify": maintainer_can_modify,
+        }
+        if body is not None:
+            payload["body"] = body
+        if head_repo is not None:
+            payload["head_repo"] = head_repo
+
+        return self._request(
+            "POST",
+            f"repos/{repo_full_name}/pulls",
+            json_body=payload,
         ).json()

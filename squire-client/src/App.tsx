@@ -4,6 +4,7 @@ import './App.css'
 import {
   addLocalReview,
   addRepo,
+  createPull,
   getPull,
   getPullComments,
   getPullDiff,
@@ -66,6 +67,13 @@ function App() {
   const [repoFullSync, setRepoFullSync] = useState(false)
   const [repoGitHubToken, setRepoGitHubToken] = useState('')
   const [repoGitHubBaseUrl, setRepoGitHubBaseUrl] = useState('')
+  const [createTitle, setCreateTitle] = useState('')
+  const [createHead, setCreateHead] = useState('')
+  const [createBase, setCreateBase] = useState('')
+  const [createHeadRepo, setCreateHeadRepo] = useState('')
+  const [createBody, setCreateBody] = useState('')
+  const [createDraft, setCreateDraft] = useState(false)
+  const [createAllowMaintainerEdit, setCreateAllowMaintainerEdit] = useState(true)
   const [reviewBody, setReviewBody] = useState('')
   const [reviewFile, setReviewFile] = useState('')
   const [reviewLine, setReviewLine] = useState('')
@@ -359,6 +367,50 @@ function App() {
     }
   }
 
+  const handleCreatePull = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!selectedRepo) {
+      setError('PR을 생성할 저장소를 먼저 선택하세요.')
+      return
+    }
+
+    const title = createTitle.trim()
+    const head = createHead.trim()
+    const base = createBase.trim()
+    if (!title || !head || !base) {
+      setError('PR 제목, head, base를 모두 입력하세요.')
+      return
+    }
+
+    setBusy(true)
+    try {
+      const created = await createPull(selectedRepo, {
+        title,
+        head,
+        base,
+        body: createBody.trim() || null,
+        draft: createDraft,
+        maintainer_can_modify: createAllowMaintainerEdit,
+        head_repo: createHeadRepo.trim() || null,
+      })
+      await reloadPulls(selectedRepo, pullState)
+      setSelectedPullNumber(created.number)
+      await reloadPullDetail(selectedRepo, created.number)
+      setCreateTitle('')
+      setCreateHead('')
+      setCreateBase('')
+      setCreateHeadRepo('')
+      setCreateBody('')
+      setCreateDraft(false)
+      setCreateAllowMaintainerEdit(true)
+      setNotice(`PR #${created.number}를 생성했습니다.`)
+    } catch (error) {
+      setError(parseError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleSetReviewStatus = async (nextStatus: ReviewStatus) => {
     if (!selectedRepo || selectedPullNumber === null) {
       return
@@ -542,6 +594,67 @@ function App() {
                 전체 sync
               </button>
             </div>
+          </section>
+
+          <section className="section">
+            <h2>PR 생성</h2>
+            <form className="review-form" onSubmit={handleCreatePull}>
+              <input
+                value={createTitle}
+                onChange={(event) => setCreateTitle(event.target.value)}
+                placeholder="PR title"
+                disabled={!selectedRepo || busy}
+              />
+              <div className="review-grid">
+                <input
+                  value={createHead}
+                  onChange={(event) => setCreateHead(event.target.value)}
+                  placeholder="head branch"
+                  disabled={!selectedRepo || busy}
+                />
+                <input
+                  value={createBase}
+                  onChange={(event) => setCreateBase(event.target.value)}
+                  placeholder="base branch"
+                  disabled={!selectedRepo || busy}
+                />
+                <input
+                  value={createHeadRepo}
+                  onChange={(event) => setCreateHeadRepo(event.target.value)}
+                  placeholder="head repo (optional)"
+                  disabled={!selectedRepo || busy}
+                />
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={createDraft}
+                    onChange={(event) => setCreateDraft(event.target.checked)}
+                    disabled={!selectedRepo || busy}
+                  />
+                  draft
+                </label>
+              </div>
+              <textarea
+                value={createBody}
+                onChange={(event) => setCreateBody(event.target.value)}
+                placeholder="PR body (optional)"
+                rows={3}
+                disabled={!selectedRepo || busy}
+              />
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={createAllowMaintainerEdit}
+                  onChange={(event) => setCreateAllowMaintainerEdit(event.target.checked)}
+                  disabled={!selectedRepo || busy}
+                />
+                maintainer push 허용
+              </label>
+              <button type="submit" className="accent" disabled={!selectedRepo || busy}>
+                PR 생성
+              </button>
+            </form>
+            <p className="small">선택한 저장소에 새 PR을 만들고 로컬 캐시도 즉시 갱신합니다.</p>
           </section>
 
           <section className="section">

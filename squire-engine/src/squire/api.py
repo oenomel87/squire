@@ -23,6 +23,7 @@ from .keychain import (
     set_github_token,
 )
 from .sync import sync_repository, validate_repo_full_name
+from .sync import upsert_pull_request_from_github
 
 app = FastAPI(title="Squire API", version="0.1.0")
 
@@ -128,6 +129,21 @@ class PullRequestDetail(BaseModel):
     updated_at: str
     synced_at: str
     review_status: str
+
+
+class PullRequestCreateRequest(BaseModel):
+    title: str
+    head: str
+    base: str
+    body: str | None = None
+    draft: bool = False
+    maintainer_can_modify: bool = True
+    head_repo: str | None = None
+
+
+class PullRequestCreateResponse(PullRequestDetail):
+    html_url: str | None = None
+    draft: bool = False
 
 
 class LocalReviewCreateRequest(BaseModel):
@@ -487,6 +503,75 @@ def get_pull(number: int, repo: str = Query(..., description="owner/repo")) -> P
         _require_repository(conn, repo)
         row = _require_pull_request(conn, repo, number)
     return _to_pull_detail(row)
+
+
+@app.post(
+    "/pulls",
+    response_model=PullRequestCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_pull(
+    request: PullRequestCreateRequest,
+    repo: str = Query(..., description="owner/repo"),
+) -> PullRequestCreateResponse:
+    title = request.title.strip()
+    head = request.head.strip()
+    base = request.base.strip()
+    head_repo = _normalize_optional_text(request.head_repo)
+    body = _normalize_optional_text(request.body)
+
+    if not title:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PR title must not be empty.",
+        )
+    if not head:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PR head branch must not be empty.",
+        )
+    if not base:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PR base branch must not be empty.",
+        )
+
+    with open_connection() as conn:
+        _require_repository(conn, repo)
+        try:
+            with open_github_client_for_repo(conn, repo) as github:
+                created = github.create_pull_request(
+                    repo,
+                    title=title,
+                    head=head,
+                    base=base,
+                    body=body,
+                    draft=request.draft,
+                    maintainer_can_modify=request.maintainer_can_modify,
+                    head_repo=head_repo,
+                )
+                created_number = int(created["number"])
+                detail = github.get_pull_request(repo, created_number)
+        except GitHubError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+
+        upsert_pull_request_from_github(
+            conn,
+            repo_full_name=repo,
+            detail=detail,
+        )
+        conn.commit()
+        row = _require_pull_request(conn, repo, created_number)
+
+    pull_detail = _to_pull_detail(row)
+    return PullRequestCreateResponse(
+        **pull_detail.model_dump(),
+        html_url=str(detail.get("html_url") or "") or None,
+        draft=bool(detail.get("draft") or False),
+    )
 
 
 @app.get("/pulls/{number}/files")

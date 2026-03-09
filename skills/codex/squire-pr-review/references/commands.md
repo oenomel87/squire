@@ -62,6 +62,8 @@ squire review list 123 --repo owner/repo
 squire review publish-local 123 --repo owner/repo --all
 ```
 
+When a local review includes `--file` and `--line`, `publish-local` attempts a GitHub inline diff comment first, then falls back to a regular PR comment if the target line cannot be resolved in the current diff.
+
 ## Common Errors
 
 - `Repository ... is not registered`: run `squire repo add owner/repo` first.

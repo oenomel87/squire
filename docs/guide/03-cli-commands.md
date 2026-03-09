@@ -21,6 +21,7 @@ uv run squire --help
 | `squire sync` | GitHub PR 메타데이터를 로컬 DB로 동기화 |
 | `squire serve` | FastAPI 서버 실행 |
 | `squire list` | 로컬 캐시 PR 목록 조회 |
+| `squire create` | GitHub PR 생성 + 로컬 DB 캐시 반영 |
 | `squire show` | 특정 PR 상세 조회 |
 | `squire files` | PR 변경 파일 목록 조회 |
 | `squire diff` | PR diff 조회 |
@@ -105,6 +106,22 @@ squire sync --repo owner/repo --full
 squire list --repo owner/repo --state open
 ```
 
+### `squire create --repo owner/repo --title "..." --head branch --base main [--body "..."] [--draft]`
+
+- 설명: GitHub에 새 PR 생성 후 결과를 로컬 DB에도 즉시 캐시
+- 주요 옵션:
+  - `--head`: 소스 브랜치명 또는 cross-repo PR용 `user:branch`
+  - `--base`: 대상 브랜치명
+  - `--head-repo`: same-network fork에서 필요한 경우 head 저장소 지정
+  - `--maintainer-can-modify/--no-maintainer-can-modify`: maintainer push 허용 여부
+
+예시:
+
+```bash
+squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
+squire create --repo owner/repo --title "Draft PR" --head feature/wip --base develop --draft
+```
+
 ### `squire show NUMBER --repo owner/repo`
 
 예시:
@@ -167,6 +184,8 @@ squire review publish 123 --repo owner/repo --body "의견 내용"
 - 설명: 로컬 리뷰 코멘트를 GitHub PR에 게시
 - `--all`: 해당 PR의 로컬 리뷰 전체 게시
 - `--id`: 특정 로컬 리뷰 ID만 게시(반복 가능)
+- `review add`에서 `--file`/`--line`이 저장된 항목은 GitHub 파일 인라인 코멘트를 우선 시도
+- 인라인 diff 라인 매핑이 실패하면 일반 PR 코멘트로 자동 fallback
 
 예시:
 
@@ -179,6 +198,7 @@ squire review publish-local 123 --repo owner/repo --id 10 --id 11
 
 - 설명: 로컬 리뷰 코멘트 추가
 - 기본값: `--severity info`, `--agent codex`
+- `--file`/`--line`을 함께 주면 이후 `publish-local`에서 인라인 게시 대상으로 사용
 
 예시:
 
@@ -211,6 +231,7 @@ squire sync --repo owner/repo
 
 # 3) PR 파악
 squire list --repo owner/repo --state open
+squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
 squire show 123 --repo owner/repo
 squire files 123 --repo owner/repo
 

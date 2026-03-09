@@ -60,6 +60,7 @@ uv run squire sync
 uv run squire sync --repo owner/repo --full
 uv run squire list --repo owner/repo --state open
 uv run squire show 123 --repo owner/repo
+uv run squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
 ```
 
 실제 GitHub PR에 리뷰 의견 코멘트 게시 (approve/merge 동작 없음):
@@ -71,7 +72,9 @@ uv run squire review publish 123 --repo owner/repo --body "의견 내용"
 uv run squire review publish-local 123 --repo owner/repo --all
 ```
 
+`squire create`/`review publish`/`publish-local`은 모두 `Pull Requests: Write` 권한이 필요합니다.
 `squire review publish`/`publish-local`은 PR 상태를 변경하지 않고 GitHub 코멘트만 추가합니다.
+`squire review add --file ... --line ...`로 저장한 로컬 리뷰는 `publish-local` 시 GitHub 인라인 코멘트를 우선 시도하고, diff 라인 매핑이 불가능하면 일반 PR 코멘트로 fallback 합니다.
 
 ## API (MVP)
 
@@ -89,6 +92,7 @@ uv run squire serve --reload
 - `DELETE /repos/{owner/repo}`
 - `POST /sync?repo=owner/repo&full=false`
 - `GET /pulls?repo=owner/repo&state=open`
+- `POST /pulls?repo=owner/repo`
 - `GET /pulls/{number}?repo=owner/repo`
 - `GET /pulls/{number}/files?repo=owner/repo`
 - `GET /pulls/{number}/diff?repo=owner/repo`

@@ -17,7 +17,9 @@ from .keychain import (
     has_github_token,
     set_github_token,
 )
+from .review_comments import resolve_inline_comment_target
 from .sync import sync_repository, validate_repo_full_name
+from .sync import upsert_pull_request_from_github
 
 app = typer.Typer(no_args_is_help=True, help="Squire CLI")
 repo_app = typer.Typer(no_args_is_help=True, help="Manage target repositories")
@@ -485,13 +487,111 @@ def reviews(
     typer.echo(json.dumps(reviews_data, indent=2, ensure_ascii=False))
 
 
+def _create_github_pull_request(
+    *,
+    repo_full_name: str,
+    title: str,
+    head: str,
+    base: str,
+    body: str | None,
+    draft: bool,
+    maintainer_can_modify: bool,
+    head_repo: str | None,
+) -> dict[str, object]:
+    normalized_title = title.strip()
+    normalized_head = head.strip()
+    normalized_base = base.strip()
+    normalized_body = _normalize_optional_text(body)
+    normalized_head_repo = _normalize_optional_text(head_repo)
+
+    if not normalized_title:
+        _exit_with_error("PR title must not be empty.")
+    if not normalized_head:
+        _exit_with_error("PR head branch must not be empty.")
+    if not normalized_base:
+        _exit_with_error("PR base branch must not be empty.")
+
+    with _open_connection() as conn:
+        _require_registered_repo(conn, repo_full_name)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            created = github.create_pull_request(
+                repo_full_name,
+                title=normalized_title,
+                head=normalized_head,
+                base=normalized_base,
+                body=normalized_body,
+                draft=draft,
+                maintainer_can_modify=maintainer_can_modify,
+                head_repo=normalized_head_repo,
+            )
+            created_number = int(created["number"])
+            detail = github.get_pull_request(repo_full_name, created_number)
+            upsert_pull_request_from_github(
+                conn,
+                repo_full_name=repo_full_name,
+                detail=detail,
+            )
+            conn.commit()
+
+    return detail
+
+
+@app.command("create")
+def create_pull_request(
+    repo_full_name: str = typer.Option(..., "--repo", help="Repository in owner/repo format"),
+    title: str = typer.Option(..., "--title", help="Pull request title"),
+    head: str = typer.Option(
+        ...,
+        "--head",
+        help="Source branch or user:branch for cross-repository PRs",
+    ),
+    base: str = typer.Option(..., "--base", help="Target branch"),
+    body: str | None = typer.Option(None, "--body", help="Pull request body"),
+    draft: bool = typer.Option(False, "--draft", help="Create the PR as a draft"),
+    maintainer_can_modify: bool = typer.Option(
+        True,
+        "--maintainer-can-modify/--no-maintainer-can-modify",
+        help="Allow maintainers to push to the head branch",
+    ),
+    head_repo: str | None = typer.Option(
+        None,
+        "--head-repo",
+        help="Optional head repository for same-network forks",
+    ),
+) -> None:
+    """Create a GitHub pull request and cache it locally."""
+
+    detail = _create_github_pull_request(
+        repo_full_name=repo_full_name,
+        title=title,
+        head=head,
+        base=base,
+        body=body,
+        draft=draft,
+        maintainer_can_modify=maintainer_can_modify,
+        head_repo=head_repo,
+    )
+
+    data = {
+        "repo": repo_full_name,
+        "number": int(detail["number"]),
+        "title": str(detail.get("title") or ""),
+        "state": str(detail.get("state") or "open"),
+        "draft": bool(detail.get("draft") or False),
+        "html_url": detail.get("html_url"),
+        "head_branch": str((detail.get("head") or {}).get("ref") or ""),
+        "base_branch": str((detail.get("base") or {}).get("ref") or ""),
+    }
+    typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
+
+
 def _publish_github_comment(
     *,
     repo_full_name: str,
     number: int,
     body: str,
     prefix: str,
-) -> None:
+) -> dict[str, object]:
     text = body.strip()
     if not text:
         _exit_with_error("Comment body must not be empty.")
@@ -507,6 +607,42 @@ def _publish_github_comment(
     comment_id = created.get("id", "-")
     comment_url = created.get("html_url", "-")
     typer.echo(f"Posted GitHub comment id={comment_id} url={comment_url}")
+    return created
+
+
+def _publish_inline_github_comment(
+    *,
+    github: GitHubClient,
+    repo_full_name: str,
+    number: int,
+    body: str,
+    prefix: str,
+    commit_id: str,
+    path: str,
+    line: int,
+    side: str,
+) -> dict[str, object]:
+    text = body.strip()
+    if not text:
+        _exit_with_error("Comment body must not be empty.")
+
+    comment_body = f"{prefix}\n\n{text}" if prefix else text
+    created = github.create_pull_review_comment(
+        repo_full_name,
+        number,
+        body=comment_body,
+        commit_id=commit_id,
+        path=path,
+        line=line,
+        side=side,
+    )
+    comment_id = created.get("id", "-")
+    comment_url = created.get("html_url", "-")
+    typer.echo(
+        f"Posted GitHub inline comment id={comment_id} url={comment_url} "
+        f"path={path} line={line} side={side}"
+    )
+    return created
 
 
 @review_app.command("publish")
@@ -575,21 +711,69 @@ def review_publish_local(
     else:
         _exit_with_error("Specify either `--all` or one/more `--id`.")
 
-    for item in selected:
-        target = "PR"
-        if item["file_path"]:
-            target = f"{item['file_path']}:{item['line_number'] or '-'}"
-        body = (
-            f"[{item['severity']}] {target}\n\n"
-            f"{item['body']}\n\n"
-            f"(agent={item['agent']}, local_review_id={item['id']})"
-        )
-        _publish_github_comment(
-            repo_full_name=repo_full_name,
-            number=number,
-            body=body,
-            prefix=prefix,
-        )
+    with _open_connection() as conn:
+        _require_registered_repo(conn, repo_full_name)
+        _require_pull_request(conn, repo_full_name, number)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            pull_request = github.get_pull_request(repo_full_name, number)
+            pull_files = github.list_pull_files(repo_full_name, number)
+
+            for item in selected:
+                file_path = item["file_path"]
+                line_number = item["line_number"]
+                inline_body = (
+                    f"[{item['severity']}] {item['body']}\n\n"
+                    f"(agent={item['agent']}, local_review_id={item['id']})"
+                )
+                fallback_target = "PR"
+                if file_path:
+                    fallback_target = f"{file_path}:{line_number or '-'}"
+                fallback_body = (
+                    f"[{item['severity']}] {fallback_target}\n\n"
+                    f"{item['body']}\n\n"
+                    f"(agent={item['agent']}, local_review_id={item['id']})"
+                )
+
+                inline_target = None
+                if file_path and line_number is not None:
+                    inline_target = resolve_inline_comment_target(
+                        pull_request,
+                        pull_files,
+                        file_path=str(file_path),
+                        line_number=int(line_number),
+                    )
+
+                if inline_target is not None:
+                    try:
+                        _publish_inline_github_comment(
+                            github=github,
+                            repo_full_name=repo_full_name,
+                            number=number,
+                            body=inline_body,
+                            prefix=prefix,
+                            commit_id=inline_target.commit_id,
+                            path=inline_target.path,
+                            line=inline_target.line,
+                            side=inline_target.side,
+                        )
+                        continue
+                    except GitHubError as exc:
+                        if exc.status_code != 422:
+                            raise
+                        typer.echo(
+                            "Inline publish failed validation; falling back to a PR comment."
+                        )
+
+                created = github.create_issue_comment(
+                    repo_full_name,
+                    number,
+                    f"{prefix}\n\n{fallback_body}" if prefix else fallback_body,
+                )
+                comment_id = created.get("id", "-")
+                comment_url = created.get("html_url", "-")
+                typer.echo(
+                    f"Posted GitHub fallback comment id={comment_id} url={comment_url}"
+                )
 
     typer.echo(f"Published {len(selected)} local review comment(s) to GitHub PR #{number}.")
 

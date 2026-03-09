@@ -33,7 +33,7 @@ SQLite DB에는 저장소별 토큰 평문을 저장하지 않습니다.
 - 읽기 전용 기능(저장소 등록/동기화/조회) 기준 최소 권한:
   - `Pull Requests: Read`
   - `Contents: Read`
-- 코멘트 게시 기능(`squire review publish`, `squire review publish-local`) 사용 시:
+- PR 생성 또는 코멘트 게시 기능(`squire create`, `squire review publish`, `squire review publish-local`) 사용 시:
   - `Pull Requests: Write` 추가 필요
 - `PAT classic`의 `repo` 전체 권한은 **필수 아님**
 - 전역 토큰은 `.env`, 저장소별 개별 설정 토큰은 macOS Keychain에 저장하며 저장소에는 커밋하지 않습니다.
@@ -171,6 +171,9 @@ uv run squire sync --repo owner/repo --full
 uv run squire list --repo owner/repo --state open
 uv run squire show 123 --repo owner/repo
 
+# 새 PR 생성
+uv run squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
+
 # 실제 GitHub PR에 의견 코멘트 추가 (상태 변경 없음)
 uv run squire review publish 123 --repo owner/repo --body "의견 내용"
 
@@ -178,4 +181,5 @@ uv run squire review publish 123 --repo owner/repo --body "의견 내용"
 uv run squire review publish-local 123 --repo owner/repo --all
 ```
 
-참고: 실제 PR 코멘트 추가에는 `GITHUB_TOKEN`에 `Pull Requests: Write` 권한이 필요합니다.
+참고: 실제 PR 생성/코멘트 추가에는 `GITHUB_TOKEN`에 `Pull Requests: Write` 권한이 필요합니다.
+`squire review add --file ... --line ...`로 저장한 로컬 리뷰는 `publish-local` 시 GitHub 파일 인라인 코멘트를 우선 시도하고, diff 라인 매핑이 불가능하면 일반 PR 코멘트로 자동 fallback 합니다.

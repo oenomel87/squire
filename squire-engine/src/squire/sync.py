@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import re
 import sqlite3
+from typing import Any
 
 from . import db
 from .github import GitHubClient
@@ -47,6 +48,38 @@ def _extract_reviewers(pr: dict[str, object]) -> list[str]:
             reviewers.add(f"team:{slug}")
 
     return sorted(reviewers)
+
+
+def upsert_pull_request_from_github(
+    conn: sqlite3.Connection,
+    *,
+    repo_full_name: str,
+    detail: dict[str, Any],
+    synced_at: str | None = None,
+    repo_id: int | None = None,
+) -> int:
+    sync_timestamp = synced_at or db.utcnow_iso()
+    if repo_id is None:
+        repo_id, _ = db.upsert_repository(conn, repo_full_name)
+    state = _normalize_pr_state(detail)
+    reviewers = _extract_reviewers(detail)
+
+    return db.upsert_pull_request(
+        conn,
+        repo_id=repo_id,
+        number=int(detail["number"]),
+        title=str(detail.get("title") or ""),
+        body=detail.get("body"),
+        author=str((detail.get("user") or {}).get("login") or "unknown"),
+        state=state,
+        head_branch=str((detail.get("head") or {}).get("ref") or ""),
+        base_branch=str((detail.get("base") or {}).get("ref") or ""),
+        changed_files=int(detail.get("changed_files") or 0),
+        reviewers_json=json.dumps(reviewers),
+        created_at=str(detail.get("created_at") or sync_timestamp),
+        updated_at=str(detail.get("updated_at") or sync_timestamp),
+        synced_at=sync_timestamp,
+    )
 
 
 def sync_repository(
@@ -98,24 +131,12 @@ def sync_repository(
     for pull in pulls:
         number = int(pull["number"])
         detail = github.get_pull_request(repo_full_name, number)
-        state = _normalize_pr_state(detail)
-        reviewers = _extract_reviewers(detail)
-
-        db.upsert_pull_request(
+        upsert_pull_request_from_github(
             conn,
-            repo_id=repo_id,
-            number=number,
-            title=str(detail.get("title") or ""),
-            body=detail.get("body"),
-            author=str((detail.get("user") or {}).get("login") or "unknown"),
-            state=state,
-            head_branch=str((detail.get("head") or {}).get("ref") or ""),
-            base_branch=str((detail.get("base") or {}).get("ref") or ""),
-            changed_files=int(detail.get("changed_files") or 0),
-            reviewers_json=json.dumps(reviewers),
-            created_at=str(detail.get("created_at") or sync_started_at),
-            updated_at=str(detail.get("updated_at") or sync_started_at),
+            repo_full_name=repo_full_name,
+            detail=detail,
             synced_at=sync_started_at,
+            repo_id=repo_id,
         )
 
     # Use sync start timestamp as the next incremental watermark.

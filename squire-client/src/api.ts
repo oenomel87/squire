@@ -39,6 +39,11 @@ export type PullDetail = {
   review_status: 'pending' | 'in-progress' | 'done'
 }
 
+export type PullCreateResponse = PullDetail & {
+  html_url: string | null
+  draft: boolean
+}
+
 export type PullFile = {
   filename: string
   status: string
@@ -172,6 +177,24 @@ export async function listPulls(
 
 export async function getPull(repo: string, number: number): Promise<PullDetail> {
   return request<PullDetail>(`/pulls/${number}?repo=${encodeURIComponent(repo)}`)
+}
+
+export async function createPull(
+  repo: string,
+  payload: {
+    title: string
+    head: string
+    base: string
+    body?: string | null
+    draft?: boolean
+    maintainer_can_modify?: boolean
+    head_repo?: string | null
+  },
+): Promise<PullCreateResponse> {
+  return request<PullCreateResponse>(`/pulls?repo=${encodeURIComponent(repo)}`, {
+    method: 'POST',
+    body: payload,
+  })
 }
 
 export async function getPullFiles(repo: string, number: number): Promise<PullFile[]> {
