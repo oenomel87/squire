@@ -18,6 +18,7 @@ from .keychain import (
     set_github_token,
 )
 from .review_comments import resolve_inline_comment_target
+from .review_threads import filter_review_threads, format_review_thread, parse_iso_datetime
 from .sync import sync_repository, validate_repo_full_name
 from .sync import upsert_pull_request_from_github
 
@@ -27,9 +28,14 @@ review_app = typer.Typer(
     no_args_is_help=True,
     help="Manage local AI reviews and publish opinion comments",
 )
+review_thread_app = typer.Typer(
+    no_args_is_help=True,
+    help="Inspect GitHub pull request review threads",
+)
 
 app.add_typer(repo_app, name="repo")
 app.add_typer(review_app, name="review")
+app.add_typer(review_thread_app, name="review-thread")
 
 
 class PRState(StrEnum):
@@ -113,6 +119,27 @@ def _require_pull_request(conn, repo_full_name: str, number: int):
             f"Run `squire sync --repo {repo_full_name}` first."
         )
     return pull_request
+
+
+def _resolve_since_timestamp(
+    github: GitHubClient,
+    repo_full_name: str,
+    since_ref: str | None,
+):
+    if since_ref is None:
+        return None
+
+    commit = github.get_commit(repo_full_name, since_ref)
+    commit_data = commit.get("commit") or {}
+    committer = commit_data.get("committer") or {}
+    author = commit_data.get("author") or {}
+    timestamp = committer.get("date") or author.get("date")
+    parsed = parse_iso_datetime(str(timestamp) if timestamp else None)
+    if parsed is None:
+        _exit_with_error(
+            f"Failed to resolve an approximate timestamp for commit `{since_ref}`."
+        )
+    return parsed
 
 
 @repo_app.command("add")
@@ -485,6 +512,126 @@ def reviews(
         with _open_github_client_for_repo(conn, repo_full_name) as github:
             reviews_data = github.list_pull_reviews(repo_full_name, number)
     typer.echo(json.dumps(reviews_data, indent=2, ensure_ascii=False))
+
+
+@app.command("review-threads")
+def review_threads(
+    number: int,
+    repo_full_name: str = typer.Option(..., "--repo"),
+    author: str | None = typer.Option(
+        None,
+        "--author",
+        help="Filter by the root review comment author login",
+    ),
+    mine: bool = typer.Option(
+        False,
+        "--mine",
+        help="Filter by the authenticated viewer login",
+    ),
+    unresolved: bool = typer.Option(
+        False,
+        "--unresolved",
+        help="Show only unresolved review threads",
+    ),
+    file_path: str | None = typer.Option(
+        None,
+        "--file",
+        help="Filter by file path",
+    ),
+    since: str | None = typer.Option(
+        None,
+        "--since",
+        help="Approximate filter using the target commit committer timestamp",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output structured JSON instead of text",
+    ),
+) -> None:
+    """Show GitHub inline review threads for a PR."""
+
+    if author and mine:
+        _exit_with_error("Use either `--author` or `--mine`, not both.")
+
+    try:
+        with _open_connection() as conn:
+            _require_registered_repo(conn, repo_full_name)
+            with _open_github_client_for_repo(conn, repo_full_name) as github:
+                payload = github.list_pull_review_threads(repo_full_name, number)
+                author_filter = author
+                if mine:
+                    viewer_login = payload.get("viewer_login")
+                    if not isinstance(viewer_login, str) or not viewer_login:
+                        _exit_with_error("Failed to resolve the authenticated viewer login.")
+                    author_filter = viewer_login
+
+                since_timestamp = _resolve_since_timestamp(github, repo_full_name, since)
+    except GitHubError as exc:
+        _exit_with_error(str(exc))
+
+    threads = filter_review_threads(
+        list(payload.get("threads") or []),
+        author=author_filter,
+        unresolved_only=unresolved,
+        file_path=file_path,
+        since_timestamp=since_timestamp,
+    )
+    threads.sort(
+        key=lambda item: (str(item.get("updated_at") or ""), str(item.get("id") or "")),
+        reverse=True,
+    )
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "repo": repo_full_name,
+                    "number": number,
+                    "viewer_login": payload.get("viewer_login"),
+                    "items": threads,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if not threads:
+        typer.echo("No review threads found.")
+        return
+
+    for index, thread in enumerate(threads):
+        if index > 0:
+            typer.echo("")
+        typer.echo(format_review_thread(thread))
+
+
+@review_thread_app.command("show")
+def review_thread_show(
+    thread_id: str,
+    repo_full_name: str = typer.Option(..., "--repo"),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output structured JSON instead of text",
+    ),
+) -> None:
+    """Show one GitHub inline review thread."""
+
+    try:
+        with _open_connection() as conn:
+            _require_registered_repo(conn, repo_full_name)
+            with _open_github_client_for_repo(conn, repo_full_name) as github:
+                payload = github.get_pull_review_thread(thread_id)
+    except GitHubError as exc:
+        _exit_with_error(str(exc))
+
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+
+    typer.echo(format_review_thread(payload["thread"]))
 
 
 def _create_github_pull_request(

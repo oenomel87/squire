@@ -48,6 +48,8 @@ squire files 123 --repo owner/repo
 squire diff 123 --repo owner/repo
 squire comments 123 --repo owner/repo
 squire reviews 123 --repo owner/repo
+squire review-threads 123 --repo owner/repo
+squire review-thread show <thread-id> --repo owner/repo
 ```
 
 ## Comment-Only Review Publishing

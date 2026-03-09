@@ -1,8 +1,118 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
+
+from .review_threads import normalize_review_thread
+
+
+_THREAD_COMMENT_FIELDS = """
+id
+databaseId
+url
+body
+createdAt
+updatedAt
+author {
+  login
+}
+replyTo {
+  id
+}
+path
+line
+originalLine
+commit {
+  oid
+}
+originalCommit {
+  oid
+}
+""".strip()
+
+_PULL_REVIEW_THREADS_QUERY = f"""
+query PullReviewThreads($owner: String!, $name: String!, $number: Int!, $after: String) {{
+  viewer {{
+    login
+  }}
+  repository(owner: $owner, name: $name) {{
+    pullRequest(number: $number) {{
+      headRefOid
+      reviewThreads(first: 100, after: $after) {{
+        nodes {{
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          originalLine
+          comments(first: 100) {{
+            totalCount
+            pageInfo {{
+              hasNextPage
+              endCursor
+            }}
+            nodes {{
+              {_THREAD_COMMENT_FIELDS}
+            }}
+          }}
+        }}
+        pageInfo {{
+          hasNextPage
+          endCursor
+        }}
+      }}
+    }}
+  }}
+}}
+""".strip()
+
+_REVIEW_THREAD_QUERY = f"""
+query ReviewThread($threadId: ID!, $after: String) {{
+  viewer {{
+    login
+  }}
+  node(id: $threadId) {{
+    ... on PullRequestReviewThread {{
+      id
+      isResolved
+      isOutdated
+      path
+      line
+      originalLine
+      comments(first: 100, after: $after) {{
+        totalCount
+        pageInfo {{
+          hasNextPage
+          endCursor
+        }}
+        nodes {{
+          {_THREAD_COMMENT_FIELDS}
+        }}
+      }}
+    }}
+  }}
+}}
+""".strip()
+
+
+def build_graphql_url(base_url: str) -> str:
+    normalized = base_url.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    path = parsed.path.rstrip("/")
+
+    if path.endswith("/api/v3"):
+        graphql_path = path[: -len("/v3")] + "/graphql"
+    elif path in {"", "/"}:
+        graphql_path = "/graphql"
+    elif path.endswith("/graphql"):
+        graphql_path = path
+    else:
+        graphql_path = path + "/graphql"
+
+    return urlunsplit((parsed.scheme, parsed.netloc, graphql_path, "", ""))
 
 
 class GitHubError(RuntimeError):
@@ -27,8 +137,9 @@ class GitHubClient:
         if not base_url:
             raise GitHubError("GITHUB_BASE_URL is required.")
 
+        normalized_base_url = base_url.rstrip("/")
         self._client = httpx.Client(
-            base_url=base_url.rstrip("/") + "/",
+            base_url=normalized_base_url + "/",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
@@ -37,6 +148,7 @@ class GitHubClient:
             },
             timeout=30.0,
         )
+        self._graphql_url = build_graphql_url(normalized_base_url)
 
     def __enter__(self) -> "GitHubClient":
         return self
@@ -101,6 +213,95 @@ class GitHubClient:
 
         return merged
 
+    def _graphql(
+        self,
+        query: str,
+        *,
+        variables: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        response = self._client.post(
+            self._graphql_url,
+            json={
+                "query": query,
+                "variables": variables or {},
+            },
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+
+        if response.status_code >= 400:
+            try:
+                message = response.json().get("message", response.text)
+            except ValueError:
+                message = response.text
+            raise GitHubError(
+                f"GitHub API error ({response.status_code}) on `{self._graphql_url}`: {message}",
+                status_code=response.status_code,
+                path=self._graphql_url,
+            )
+
+        payload = response.json()
+        errors = payload.get("errors") or []
+        if errors:
+            messages = ", ".join(
+                str(item.get("message") or "Unknown GraphQL error")
+                for item in errors
+                if isinstance(item, dict)
+            ) or "Unknown GraphQL error"
+            raise GitHubError(
+                f"GitHub GraphQL error on `{self._graphql_url}`: {messages}",
+                path=self._graphql_url,
+            )
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise GitHubError(
+                f"GitHub GraphQL error on `{self._graphql_url}`: missing `data` payload",
+                path=self._graphql_url,
+            )
+        return data
+
+    def _split_repo_full_name(self, repo_full_name: str) -> tuple[str, str]:
+        owner, separator, name = repo_full_name.partition("/")
+        if not separator or not owner or not name:
+            raise GitHubError(f"Invalid repository name: `{repo_full_name}`")
+        return owner, name
+
+    def _load_review_thread_comments(
+        self,
+        thread_id: str,
+        *,
+        initial_nodes: list[dict[str, Any]],
+        after: str | None,
+    ) -> list[dict[str, Any]]:
+        comments = list(initial_nodes)
+        cursor = after
+
+        while cursor:
+            data = self._graphql(
+                _REVIEW_THREAD_QUERY,
+                variables={
+                    "threadId": thread_id,
+                    "after": cursor,
+                },
+            )
+            node = data.get("node")
+            if not isinstance(node, dict):
+                break
+
+            connection = node.get("comments") or {}
+            nodes = connection.get("nodes") or []
+            comments.extend(item for item in nodes if isinstance(item, dict))
+
+            page_info = connection.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+
+        return comments
+
     def list_pull_requests(
         self, repo_full_name: str, *, state: str = "all"
     ) -> list[dict[str, Any]]:
@@ -131,6 +332,9 @@ class GitHubClient:
     def get_pull_request(self, repo_full_name: str, number: int) -> dict[str, Any]:
         return self._request("GET", f"repos/{repo_full_name}/pulls/{number}").json()
 
+    def get_commit(self, repo_full_name: str, ref: str) -> dict[str, Any]:
+        return self._request("GET", f"repos/{repo_full_name}/commits/{ref}").json()
+
     def list_pull_files(self, repo_full_name: str, number: int) -> list[dict[str, Any]]:
         return self._paginate(f"repos/{repo_full_name}/pulls/{number}/files")
 
@@ -150,6 +354,125 @@ class GitHubClient:
         self, repo_full_name: str, number: int
     ) -> list[dict[str, Any]]:
         return self._paginate(f"repos/{repo_full_name}/pulls/{number}/reviews")
+
+    def list_pull_review_threads(
+        self,
+        repo_full_name: str,
+        number: int,
+    ) -> dict[str, Any]:
+        owner, name = self._split_repo_full_name(repo_full_name)
+        cursor: str | None = None
+        threads: list[dict[str, Any]] = []
+        viewer_login: str | None = None
+        head_ref_oid: str | None = None
+
+        while True:
+            data = self._graphql(
+                _PULL_REVIEW_THREADS_QUERY,
+                variables={
+                    "owner": owner,
+                    "name": name,
+                    "number": number,
+                    "after": cursor,
+                },
+            )
+
+            viewer = data.get("viewer") or {}
+            viewer_login = str(viewer.get("login") or "") or viewer_login
+
+            repository = data.get("repository")
+            if repository is None:
+                raise GitHubError(
+                    f"Repository `{repo_full_name}` not found in GraphQL response."
+                )
+
+            pull_request = (repository or {}).get("pullRequest")
+            if pull_request is None:
+                raise GitHubError(
+                    f"Pull request #{number} not found in `{repo_full_name}`."
+                )
+
+            head_ref_oid = str(pull_request.get("headRefOid") or "") or head_ref_oid
+            connection = pull_request.get("reviewThreads") or {}
+            nodes = connection.get("nodes") or []
+
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+
+                comments_connection = node.get("comments") or {}
+                comment_nodes = comments_connection.get("nodes") or []
+                page_info = comments_connection.get("pageInfo") or {}
+                if page_info.get("hasNextPage"):
+                    node = dict(node)
+                    node["comments"] = dict(comments_connection)
+                    node["comments"]["nodes"] = self._load_review_thread_comments(
+                        str(node.get("id") or ""),
+                        initial_nodes=[
+                            item for item in comment_nodes if isinstance(item, dict)
+                        ],
+                        after=page_info.get("endCursor"),
+                    )
+
+                threads.append(
+                    normalize_review_thread(node, head_ref_oid=head_ref_oid)
+                )
+
+            page_info = connection.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+
+        return {
+            "viewer_login": viewer_login,
+            "head_ref_oid": head_ref_oid,
+            "threads": threads,
+        }
+
+    def get_pull_review_thread(self, thread_id: str) -> dict[str, Any]:
+        cursor: str | None = None
+        viewer_login: str | None = None
+        thread_node: dict[str, Any] | None = None
+        all_comments: list[dict[str, Any]] = []
+
+        while True:
+            data = self._graphql(
+                _REVIEW_THREAD_QUERY,
+                variables={
+                    "threadId": thread_id,
+                    "after": cursor,
+                },
+            )
+
+            viewer = data.get("viewer") or {}
+            viewer_login = str(viewer.get("login") or "") or viewer_login
+
+            node = data.get("node")
+            if not isinstance(node, dict):
+                raise GitHubError(f"Review thread `{thread_id}` not found.")
+
+            thread_node = node
+            comments_connection = node.get("comments") or {}
+            nodes = comments_connection.get("nodes") or []
+            all_comments.extend(item for item in nodes if isinstance(item, dict))
+
+            page_info = comments_connection.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+
+        if thread_node is None:
+            raise GitHubError(f"Review thread `{thread_id}` not found.")
+
+        thread_payload = dict(thread_node)
+        thread_payload["comments"] = {
+            "totalCount": len(all_comments),
+            "nodes": all_comments,
+        }
+        return {
+            "viewer_login": viewer_login,
+            "thread": normalize_review_thread(thread_payload, head_ref_oid=None),
+        }
 
     def create_issue_comment(
         self, repo_full_name: str, issue_number: int, body: str

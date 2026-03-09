@@ -94,6 +94,8 @@ squire diff <number> --repo <owner/repo> [--file <path>]
 squire files <number> --repo <owner/repo>
 squire comments <number> --repo <owner/repo>
 squire reviews <number> --repo <owner/repo>
+squire review-threads <number> --repo <owner/repo>
+squire review-thread show <thread-id> --repo <owner/repo>
 ```
 
 ### 쓰기 — AI 리뷰 저장 (로컬 전용)

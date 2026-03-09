@@ -10,6 +10,9 @@
   - `GITHUB_BASE_URL` (선택, 기본값 `https://api.github.com`)
     - GitHub Enterprise Server 사용 시 설정합니다.
     - 예시: `https://github.mycompany.com/api/v3`
+    - review thread 조회용 GraphQL URL은 이 값으로부터 자동 파생합니다.
+      - `https://api.github.com` -> `https://api.github.com/graphql`
+      - `https://github.mycompany.com/api/v3` -> `https://github.mycompany.com/api/graphql`
 - `GITHUB_TOKEN` / `GITHUB_BASE_URL`는 전역 기본값입니다.
   - 저장소 등록 시 저장소별 값으로 덮어쓸 수 있습니다.
 
@@ -60,6 +63,8 @@ uv run squire sync
 uv run squire sync --repo owner/repo --full
 uv run squire list --repo owner/repo --state open
 uv run squire show 123 --repo owner/repo
+uv run squire review-threads 123 --repo owner/repo
+uv run squire review-thread show <thread-id> --repo owner/repo
 uv run squire create --repo owner/repo --title "새 기능 추가" --head feature/new-flow --base main
 ```
 

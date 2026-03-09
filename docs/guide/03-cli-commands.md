@@ -27,6 +27,8 @@ uv run squire --help
 | `squire diff` | PR diff 조회 |
 | `squire comments` | GitHub PR 이슈 코멘트 조회 |
 | `squire reviews` | GitHub PR 리뷰 이벤트 조회 |
+| `squire review-threads` | GitHub PR 인라인 리뷰 스레드 조회 |
+| `squire review-thread ...` | 단일 GitHub 리뷰 스레드 상세 조회 |
 | `squire repo ...` | 대상 저장소 관리 |
 | `squire review ...` | 로컬 리뷰/코멘트 게시 관리 |
 
@@ -164,6 +166,34 @@ squire comments 123 --repo owner/repo
 
 ```bash
 squire reviews 123 --repo owner/repo
+```
+
+### `squire review-threads NUMBER --repo owner/repo [--author LOGIN|--mine] [--unresolved] [--file path] [--since <commit>] [--json]`
+
+- 설명: PR의 GitHub 인라인 리뷰 스레드와 답글을 조회
+- `--author`: 루트 리뷰 코멘트 작성자 기준 필터
+- `--mine`: 현재 인증된 viewer login 기준 필터
+- `--unresolved`: unresolved 스레드만 조회
+- `--file`: 파일 경로 기준 필터
+- `--since`: 지정 commit의 committer timestamp 이후로 갱신된 스레드만 근사 필터
+- `--json`: 구조화된 JSON 출력
+
+예시:
+
+```bash
+squire review-threads 123 --repo owner/repo
+squire review-threads 123 --repo owner/repo --mine --unresolved
+squire review-threads 123 --repo owner/repo --file src/main.py --json
+```
+
+### `squire review-thread show THREAD_ID --repo owner/repo [--json]`
+
+- 설명: 단일 리뷰 스레드 상세 조회
+
+예시:
+
+```bash
+squire review-thread show PRRT_kwDOExample --repo owner/repo
 ```
 
 ## 5) `review` 그룹
