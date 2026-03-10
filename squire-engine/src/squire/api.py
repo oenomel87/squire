@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from . import db
 from .config import get_settings
-from .github import GitHubClient, GitHubError
+from .github import GitHubClient, GitHubError, ReactionContent
 from .keychain import (
     KeychainCommandError,
     KeychainUnavailableError,
@@ -54,6 +54,7 @@ app.add_middleware(
 PRState = Literal["open", "closed", "all"]
 Severity = Literal["info", "warning", "error"]
 ReviewStatus = Literal["pending", "in-progress", "done"]
+ReactionTarget = Literal["issue", "review"]
 
 
 class RepoAddRequest(BaseModel):
@@ -171,6 +172,18 @@ class LocalReviewListResponse(BaseModel):
 
 class ReviewStatusUpdateRequest(BaseModel):
     status: ReviewStatus
+
+
+class CommentReactionCreateRequest(BaseModel):
+    comment_id: int
+    comment_type: ReactionTarget
+    content: ReactionContent
+
+
+class CommentReactionResponse(BaseModel):
+    id: int
+    content: ReactionContent
+    user_login: str | None = None
 
 
 @contextmanager
@@ -746,3 +759,45 @@ def update_local_review_status(
         "number": number,
         "status": request.status,
     }
+
+
+@app.post(
+    "/pulls/{number}/comment-reactions",
+    response_model=CommentReactionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_comment_reaction(
+    number: int,
+    request: CommentReactionCreateRequest,
+    repo: str = Query(..., description="owner/repo"),
+) -> CommentReactionResponse:
+    with open_connection() as conn:
+        _require_repository(conn, repo)
+        _require_pull_request(conn, repo, number)
+        with open_github_client_for_repo(conn, repo) as github_client:
+            try:
+                if request.comment_type == "issue":
+                    created = github_client.create_issue_comment_reaction(
+                        repo,
+                        request.comment_id,
+                        content=request.content,
+                    )
+                else:
+                    created = github_client.create_pull_review_comment_reaction(
+                        repo,
+                        request.comment_id,
+                        content=request.content,
+                    )
+            except GitHubError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
+
+    user = created.get("user") or {}
+    user_login = user.get("login") if isinstance(user, dict) else None
+    return CommentReactionResponse(
+        id=int(created["id"]),
+        content=str(created["content"]),
+        user_login=str(user_login) if user_login else None,
+    )

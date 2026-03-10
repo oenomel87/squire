@@ -56,6 +56,22 @@ class ReviewStatus(StrEnum):
     DONE = "done"
 
 
+class ReactionTarget(StrEnum):
+    ISSUE = "issue"
+    REVIEW = "review"
+
+
+class ReactionContent(StrEnum):
+    THUMBS_UP = "+1"
+    THUMBS_DOWN = "-1"
+    LAUGH = "laugh"
+    CONFUSED = "confused"
+    HEART = "heart"
+    HOORAY = "hooray"
+    ROCKET = "rocket"
+    EYES = "eyes"
+
+
 @contextmanager
 def _open_connection():
     settings = get_settings()
@@ -512,6 +528,40 @@ def reviews(
         with _open_github_client_for_repo(conn, repo_full_name) as github:
             reviews_data = github.list_pull_reviews(repo_full_name, number)
     typer.echo(json.dumps(reviews_data, indent=2, ensure_ascii=False))
+
+
+@app.command("react")
+def react(
+    number: int,
+    repo_full_name: str = typer.Option(..., "--repo"),
+    comment_id: int = typer.Option(..., "--comment-id"),
+    comment_type: ReactionTarget = typer.Option(..., "--type"),
+    content: ReactionContent = typer.Option(..., "--content"),
+) -> None:
+    """Add a GitHub reaction to an existing PR issue/review comment."""
+
+    with _open_connection() as conn:
+        _require_registered_repo(conn, repo_full_name)
+        _require_pull_request(conn, repo_full_name, number)
+        with _open_github_client_for_repo(conn, repo_full_name) as github:
+            if comment_type is ReactionTarget.ISSUE:
+                created = github.create_issue_comment_reaction(
+                    repo_full_name,
+                    comment_id,
+                    content=content.value,
+                )
+            else:
+                created = github.create_pull_review_comment_reaction(
+                    repo_full_name,
+                    comment_id,
+                    content=content.value,
+                )
+
+    reaction_id = created.get("id", "-")
+    typer.echo(
+        f"Posted GitHub {comment_type.value} comment reaction "
+        f"id={reaction_id} content={content.value} comment_id={comment_id}"
+    )
 
 
 @app.command("review-threads")

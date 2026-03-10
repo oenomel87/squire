@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -96,6 +96,17 @@ query ReviewThread($threadId: ID!, $after: String) {{
   }}
 }}
 """.strip()
+
+ReactionContent = Literal[
+    "+1",
+    "-1",
+    "laugh",
+    "confused",
+    "heart",
+    "hooray",
+    "rocket",
+    "eyes",
+]
 
 
 def build_graphql_url(base_url: str) -> str:
@@ -504,6 +515,32 @@ class GitHubClient:
                 "line": line,
                 "side": side,
             },
+        ).json()
+
+    def create_issue_comment_reaction(
+        self,
+        repo_full_name: str,
+        comment_id: int,
+        *,
+        content: ReactionContent,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"repos/{repo_full_name}/issues/comments/{comment_id}/reactions",
+            json_body={"content": content},
+        ).json()
+
+    def create_pull_review_comment_reaction(
+        self,
+        repo_full_name: str,
+        comment_id: int,
+        *,
+        content: ReactionContent,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"repos/{repo_full_name}/pulls/comments/{comment_id}/reactions",
+            json_body={"content": content},
         ).json()
 
     def create_pull_request(

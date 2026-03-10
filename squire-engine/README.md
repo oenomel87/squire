@@ -75,6 +75,7 @@ PR 동기화 및 로컬 조회:
 
 ```bash
 ./scripts/squire.sh review publish 123 --repo owner/repo --body "의견 내용"
+./scripts/squire.sh react 123 --repo owner/repo --comment-id 456 --type issue --content eyes
 
 # 로컬에 저장된 리뷰 코멘트를 GitHub에 게시
 ./scripts/squire.sh review publish-local 123 --repo owner/repo --all
@@ -82,6 +83,8 @@ PR 동기화 및 로컬 조회:
 
 `squire create`/`review publish`/`publish-local`은 모두 `Pull Requests: Write` 권한이 필요합니다.
 `squire review publish`/`publish-local`은 PR 상태를 변경하지 않고 GitHub 코멘트만 추가합니다.
+`squire react`는 기존 PR issue comment 또는 review comment에 GitHub reaction을 추가합니다.
+지원 값은 `+1`, `-1`, `laugh`, `confused`, `heart`, `hooray`, `rocket`, `eyes` 입니다.
 `squire review add --file ... --line ...`로 저장한 로컬 리뷰는 `publish-local` 시 GitHub 인라인 코멘트를 우선 시도하고, diff 라인 매핑이 불가능하면 일반 PR 코멘트로 fallback 합니다.
 
 ## API (MVP)
@@ -109,3 +112,4 @@ PR 동기화 및 로컬 조회:
 - `POST /pulls/{number}/local-reviews?repo=owner/repo`
 - `GET /pulls/{number}/local-reviews?repo=owner/repo`
 - `PUT /pulls/{number}/review-status?repo=owner/repo`
+- `POST /pulls/{number}/comment-reactions?repo=owner/repo`
